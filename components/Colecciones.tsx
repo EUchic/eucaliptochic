@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import Reveal, { Words } from "./Reveal";
 
 type Item = { nombre: string; foto: string; piezas: number };
 
@@ -10,12 +12,12 @@ export default function Colecciones({ items }: { items: Item[] }) {
   if (!items.length) return null;
   return (
     <section className="cols wrap" aria-labelledby="cols-t">
-      <h2 id="cols-t" className="titulo">Colecciones</h2>
+      <Reveal kind="words" as="h2" className="titulo"><span id="cols-t"><Words text="Colecciones" /></span></Reveal>
       <div className="cols-grid">
         <ul className="cols-lista">
           {items.map((c, i) => (
-            <li key={c.nombre}>
-              <a
+            <Reveal as="li" kind="line" delay={i * 70} key={c.nombre}>
+              <Link
                 href={`/tienda?coleccion=${encodeURIComponent(c.nombre)}`}
                 className={i === activa ? "is-on" : ""}
                 onMouseEnter={() => setActiva(i)}
@@ -23,11 +25,11 @@ export default function Colecciones({ items }: { items: Item[] }) {
               >
                 <span>{c.nombre}</span>
                 <small>{c.piezas} {c.piezas === 1 ? "pieza" : "piezas"}</small>
-              </a>
-            </li>
+              </Link>
+            </Reveal>
           ))}
         </ul>
-        <div className="cols-foto" aria-hidden>
+        <div className="cols-foto" aria-hidden data-n={items.length}>
           {items.map((c, i) => (
             <img key={c.nombre} src={c.foto} alt="" loading="lazy" className={i === activa ? "is-on" : ""} />
           ))}

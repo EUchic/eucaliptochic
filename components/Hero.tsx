@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { Mark } from "./Logo";
 
 /**
- * Portada: las letras del logo (EU) se abren como una cortina al bajar y dejan la foto al frente.
- * Es el único movimiento automático de la página. La foto se puede cambiar luego por el video de Google Flow.
+ * Portada: las letras del logo real (E y U) se abren como una cortina al bajar y dejan la foto al frente.
+ * La foto se puede cambiar luego por el video de Google Flow.
  */
 export default function Hero({ foto, srcSet, nombre, href }: { foto: string; srcSet: string; nombre: string; href: string }) {
   const ref = useRef<HTMLElement>(null);
@@ -35,17 +37,18 @@ export default function Hero({ foto, srcSet, nombre, href }: { foto: string; src
   return (
     <section className="hero" ref={ref}>
       <div className="hero-pin">
-        <span className="hero-letra hero-e" aria-hidden>E</span>
-        <a className="hero-foto" href={href} aria-label={`Ver ${nombre}`}>
-          <img src={foto} srcSet={srcSet} sizes="(max-width: 700px) 70vw, 34vw" alt={nombre} fetchPriority="high" />
-        </a>
-        <span className="hero-letra hero-u" aria-hidden>U</span>
+        <span className="hero-letra hero-e"><Mark part="e" /></span>
+        <Link className="hero-foto" href={href} aria-label={`Ver ${nombre}`} data-cursor="Ver">
+          <img src={foto} srcSet={srcSet} sizes="(max-width: 700px) 70vw, 40vw" alt={nombre} fetchPriority="high" />
+        </Link>
+        <span className="hero-letra hero-u"><Mark part="u" /></span>
         <h1 className="hero-marca">
           <span className="sr">Eucalipto Chic</span>
-          <span aria-hidden>chic</span>
+          <Mark part="chic" />
         </h1>
         <p className="hero-firma">By Andrea Bermúdez</p>
-        <a className="hero-pieza" href={href}>{nombre}</a>
+        <Link className="hero-pieza" href={href}>{nombre}</Link>
+        <span className="hero-baja" aria-hidden>Bajá</span>
       </div>
     </section>
   );

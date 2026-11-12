@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import Card from "@/components/Card";
+import Reveal, { Words } from "@/components/Reveal";
 import { facets, getCatalog } from "@/lib/catalog";
 
 export const metadata: Metadata = { title: "Tienda" };
@@ -13,25 +15,25 @@ export default async function Tienda({ searchParams }: { searchParams: Promise<{
 
   return (
     <section className="wrap tienda">
-      <h1 className="titulo titulo-xl">{titulo}</h1>
+      <Reveal kind="words" as="h1" className="titulo titulo-xl"><Words text={titulo} /></Reveal>
       <nav className="filtros" aria-label="Filtrar piezas">
         <div>
           <span>Tipo de pieza</span>
-          <a href="/tienda" aria-current={!tipo && !coleccion ? "page" : undefined}>Todas</a>
+          <Link href="/tienda" scroll={false} aria-current={!tipo && !coleccion ? "page" : undefined}>Todas</Link>
           {tipos.map((t) => (
-            <a key={t} href={`/tienda?tipo=${encodeURIComponent(t)}`} aria-current={t === tipo ? "page" : undefined}>{t}</a>
+            <Link key={t} href={`/tienda?tipo=${encodeURIComponent(t)}`} scroll={false} aria-current={t === tipo ? "page" : undefined}>{t}</Link>
           ))}
         </div>
         <div>
           <span>Colección</span>
           {colecciones.map((c) => (
-            <a key={c} href={`/tienda?coleccion=${encodeURIComponent(c)}`} aria-current={c === coleccion ? "page" : undefined}>{c}</a>
+            <Link key={c} href={`/tienda?coleccion=${encodeURIComponent(c)}`} scroll={false} aria-current={c === coleccion ? "page" : undefined}>{c}</Link>
           ))}
         </div>
       </nav>
       <p className="conteo">{lista.length} {lista.length === 1 ? "pieza" : "piezas"}</p>
       {lista.length ? (
-        <div className="grid">{lista.map((p) => <Card key={p.slug} p={p} />)}</div>
+        <div className="grid">{lista.map((p, i) => <Card key={p.slug} p={p} i={i} />)}</div>
       ) : (
         <p className="vacio">No hay piezas con ese filtro. <a className="link" href="/tienda">Ver todas</a></p>
       )}

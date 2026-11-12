@@ -5,6 +5,10 @@ import "@fontsource-variable/jost";
 import "./globals.css";
 import { BagButton, CartProvider } from "@/components/Cart";
 import { WHATSAPP } from "@/lib/catalog";
+import Link from "next/link";
+import Fx from "@/components/Fx";
+import Intro from "@/components/Intro";
+import { Lockup, Mark } from "@/components/Logo";
 
 export const metadata: Metadata = {
   title: { default: "Eucalipto Chic — By Andrea Bermúdez", template: "%s — Eucalipto Chic" },
@@ -16,25 +20,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es-CR">
       <body>
+        <Intro />
+        <Fx />
         <a className="skip" href="#contenido">Ir al contenido</a>
         <CartProvider whatsapp={WHATSAPP}>
           <header className="nav">
-            <a className="nav-logo" href="/" aria-label="Eucalipto Chic, inicio">
-              <b>EU</b><i>chic</i>
-            </a>
+            <Link className="nav-logo" href="/" aria-label="Eucalipto Chic, inicio">
+              <Mark part="full" />
+            </Link>
             <nav aria-label="Principal">
-              <a href="/tienda">Tienda</a>
-              <a href="/#colecciones">Colecciones</a>
-              <a href="/#andrea">Andrea</a>
+              <Link href="/tienda">Tienda</Link>
+              <Link href="/#colecciones">Colecciones</Link>
+              <Link href="/#andrea">Andrea</Link>
             </nav>
             <BagButton />
           </header>
           <main id="contenido">{children}</main>
           <footer className="pie">
             <div className="wrap pie-grid">
-              <p className="pie-marca"><b>EU</b><i>chic</i></p>
+              <Lockup className="pie-marca" />
               <ul>
-                <li><a href="/tienda">Toda la tienda</a></li>
+                <li><Link href="/tienda">Toda la tienda</Link></li>
                 <li><a href={`https://wa.me/${WHATSAPP}`} target="_blank" rel="noopener noreferrer">WhatsApp 7017 1232</a></li>
                 <li><a href="https://www.instagram.com/eucaliptochicr/" target="_blank" rel="noopener noreferrer">Instagram @eucaliptochicr</a></li>
               </ul>

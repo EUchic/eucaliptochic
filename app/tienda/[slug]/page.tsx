@@ -43,7 +43,7 @@ export default async function Pieza({ params }: Props) {
       {mas.length > 0 && (
         <section className="wrap nuevas" aria-labelledby="mas-t">
           <h2 id="mas-t" className="titulo">{p.coleccion ? `Más de ${p.coleccion}` : `Más ${p.tipo.toLowerCase()}`}</h2>
-          <div className="grid">{mas.map((x) => <Card key={x.slug} p={x} />)}</div>
+          <div className="grid">{mas.map((x, i) => <Card key={x.slug} p={x} i={i} />)}</div>
         </section>
       )}
     </>

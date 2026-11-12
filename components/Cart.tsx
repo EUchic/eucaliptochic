@@ -123,7 +123,7 @@ export function BagButton() {
   const { count, setOpen } = useCart();
   return (
     <button className="bag" onClick={() => setOpen(true)} aria-label={`Abrir bolsa, ${count} piezas`}>
-      Bolsa <span>{count}</span>
+      Bolsa <span key={count} className={count ? "bump" : ""}>{count}</span>
     </button>
   );
 }

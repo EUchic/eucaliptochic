@@ -9,8 +9,15 @@ export function Galeria({ fotos, nombre }: { fotos: P["fotos"]; nombre: string }
   const [i, setI] = useState(0);
   return (
     <div className="gal">
-      <div className="gal-main">
-        <img src={fotos[i].full} srcSet={fotos[i].set} sizes="(max-width: 900px) 100vw, 52vw" alt={`${nombre}, foto ${i + 1}`} />
+      <div
+        className="gal-main"
+        onMouseMove={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          e.currentTarget.style.setProperty("--zx", ((e.clientX - r.left) / r.width) * 100 + "%");
+          e.currentTarget.style.setProperty("--zy", ((e.clientY - r.top) / r.height) * 100 + "%");
+        }}
+      >
+        <img key={fotos[i].full} src={fotos[i].full} srcSet={fotos[i].set} sizes="(max-width: 900px) 100vw, 52vw" alt={`${nombre}, foto ${i + 1}`} />
       </div>
       {fotos.length > 1 && (
         <div className="gal-thumbs" role="group" aria-label="Más fotos">
