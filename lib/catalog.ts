@@ -125,4 +125,7 @@ export const srcSet = (url: string) => [300, 500, 750, 1000, 1500].map((w) => `$
 export const colones = (n: number) =>
   n > 0 ? "₡" + n.toLocaleString("es-CR").replace(/,/g, " ").replace(/\./g, " ") : "Consultar precio";
 
+export const colSlug = (c: string) => slugify(c);
+export const INSTAGRAM = "https://www.instagram.com/eucaliptochicr/";
+export const FACEBOOK = "https://www.facebook.com/profile.php?id=100063841471635";
 export const WHATSAPP = "50670171232";

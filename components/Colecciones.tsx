@@ -13,12 +13,13 @@ export default function Colecciones({ items }: { items: Item[] }) {
   return (
     <section className="cols wrap" aria-labelledby="cols-t">
       <Reveal kind="words" as="h2" className="titulo"><span id="cols-t"><Words text="Colecciones" /></span></Reveal>
+      <Link className="link-ic cols-todas" href="/colecciones">Ver las colecciones</Link>
       <div className="cols-grid">
         <ul className="cols-lista">
           {items.map((c, i) => (
             <Reveal as="li" kind="line" delay={i * 70} key={c.nombre}>
               <Link
-                href={`/tienda?coleccion=${encodeURIComponent(c.nombre)}`}
+                href={`/colecciones/${c.nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()}`}
                 className={i === activa ? "is-on" : ""}
                 onMouseEnter={() => setActiva(i)}
                 onFocus={() => setActiva(i)}
