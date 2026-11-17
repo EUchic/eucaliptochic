@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Card from "@/components/Card";
 import Reveal, { Words } from "@/components/Reveal";
 import TiendaGrid from "@/components/TiendaGrid";
-import { getCatalog } from "@/lib/catalog";
+import { getCatalog } from "@/lib/tienda";
 
 export const metadata: Metadata = { title: "Tienda" };
 

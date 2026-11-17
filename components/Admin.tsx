@@ -22,9 +22,16 @@ const EJEMPLOS = [
   "¿Cuánto llevo gastado en tela?",
 ];
 
-export default function Admin({ piezas, colecciones, tipos, fotos, protegido }: { piezas: Pieza[]; colecciones: string[]; tipos: string[]; fotos: FotoPanel[]; protegido: boolean }) {
+type Props = { piezas: Pieza[]; colecciones: string[]; tipos: string[]; fotos: FotoPanel[]; protegido: boolean; enLinea: boolean; inicial?: Datos; aviso?: string };
+const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion"].includes(a.tipo);
+
+export default function Admin({ piezas, colecciones, tipos, fotos, protegido, enLinea, inicial, aviso }: Props) {
   const [tab, setTab] = useState<Tab>("asistente");
-  const [d, setD] = useState<Datos>(VACIO);
+  const [d, setD] = useState<Datos>(inicial ?? VACIO);
+  const [base, setBase] = useState(piezas);
+  const [cols, setCols] = useState(colecciones);
+  const [guardando, setGuardando] = useState(false);
+  const [mal, setMal] = useState(false);
   const [listo, setListo] = useState(false);
   const [tc, setTc] = useState<TipoCambio>(null);
 
@@ -39,16 +46,16 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido }: 
   const rec = useRef<any>(null);
 
   useEffect(() => {
-    try { const s = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (s) setD({ ...VACIO, ...s }); } catch {}
+    if (!enLinea) try { const s = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (s) setD({ ...VACIO, ...s }); } catch {}
     try { setVoz(localStorage.getItem(KEY + "-voz") !== "0"); } catch {}
     setListo(true);
     fetch("/api/tipo-cambio").then((r) => (r.ok ? r.json() : null)).then((j) => j && setTc(j)).catch(() => {});
   }, []);
-  useEffect(() => { if (listo) try { localStorage.setItem(KEY, JSON.stringify(d)); } catch {} }, [d, listo]);
-  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(""), 3200); return () => clearTimeout(t); }, [toast]);
+  useEffect(() => { if (listo && !enLinea) try { localStorage.setItem(KEY, JSON.stringify(d)); } catch {} }, [d, listo, enLinea]);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => { setToast(""); setMal(false); }, mal ? 6000 : 3200); return () => clearTimeout(t); }, [toast, mal]);
 
-  const todas = useMemo(() => [...d.nuevas, ...piezas].map((p) => ({ ...p, ...d.cambios[p.slug] })), [piezas, d]);
-  const todasColecciones = useMemo(() => [...new Set([...colecciones, ...d.colecciones])], [colecciones, d.colecciones]);
+  const todas = useMemo(() => [...d.nuevas, ...base].map((p) => ({ ...p, ...d.cambios[p.slug] })), [base, d]);
+  const todasColecciones = useMemo(() => [...new Set([...cols, ...d.colecciones])], [cols, d.colecciones]);
   const mes = resumenMes(d);
 
   const hablar = useCallback((t: string) => {
@@ -62,12 +69,29 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido }: 
     speechSynthesis.speak(u);
   }, [voz]);
 
-  const guardar = useCallback((acciones: Accion[], msg = "Listo, guardado.") => {
-    setD((x) => acciones.reduce((acc, a) => aplicar(acc, a, tc), x));
-    setResp(null);
-    setToast(msg);
-    hablar(msg);
-  }, [tc, hablar]);
+  const guardar = useCallback(async (acciones: Accion[], msg = "Listo, guardado.") => {
+    if (!enLinea) {
+      setD((x) => acciones.reduce((acc, a) => aplicar(acc, a, tc), x));
+      setResp(null); setMal(false); setToast(msg); hablar(msg);
+      return;
+    }
+    // Se guarda en la base de datos; la tienda se refresca sola en el servidor.
+    setGuardando(true);
+    try {
+      const r = await fetch("/api/acciones", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ acciones }) });
+      if (r.status === 401) { location.href = "/admin/entrar"; return; }
+      const j = await r.json().catch(() => ({}));
+      if (j.estado) { setBase(j.estado.piezas); setCols(j.estado.colecciones); setD(j.estado.datos); }
+      if (!r.ok) throw new Error(j.error || "No se pudo guardar. Probá de nuevo.");
+      const dicho = msg + (acciones.some(tocaTienda) ? " La tienda ya está al día." : "");
+      setResp(null); setMal(false); setToast(dicho); hablar(msg);
+    } catch (e) {
+      const m = e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. No se guardó; probá de nuevo.";
+      setMal(true); setToast(m); hablar(m);
+    } finally {
+      setGuardando(false);
+    }
+  }, [tc, hablar, enLinea]);
 
   const procesar = useCallback(async (texto: string) => {
     const t = texto.trim();
@@ -143,7 +167,8 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido }: 
           {tc && <p className="ad-tc" title={`Tipo de cambio de Hacienda, ${tc.fecha}`}><span>Dólar hoy</span> {fmt(tc.compra)} / {fmt(tc.venta)}</p>}
         </header>
 
-        <p className="ad-prueba"><b>Modo de prueba.</b> Lo que hagás aquí se guarda solo en este teléfono y todavía no cambia la tienda. Al conectar la base de datos se guarda de verdad y la página se actualiza sola.</p>
+        {!enLinea && <p className="ad-prueba"><b>Modo de prueba.</b> Lo que hagás aquí se guarda solo en este teléfono y todavía no cambia la tienda. Al conectar la base de datos se guarda de verdad y la página se actualiza sola.</p>}
+        {aviso && <p className="ad-prueba is-mal">{aviso}</p>}
 
         {tab === "asistente" && (
           <section className="ad-asis">
@@ -151,7 +176,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido }: 
               <span className="orbe-onda" /><span className="orbe-onda" /><span className="orbe-onda" />
               <Icon n="mic" s={64} />
             </button>
-            <p className="orbe-txt" aria-live="polite">{oyendo ? "Te escucho…" : pensando ? "Pensando…" : resp?.acciones.length ? "Decí «sí» o tocá Guardar" : "Tocá y hablame"}</p>
+            <p className="orbe-txt" aria-live="polite">{oyendo ? "Te escucho…" : pensando ? "Pensando…" : guardando ? "Guardando…" : resp?.acciones.length ? "Decí «sí» o tocá Guardar" : "Tocá y hablame"}</p>
             {oido && <p className="ad-oido">«{oido}»</p>}
 
             {resp && (
@@ -163,7 +188,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido }: 
                       {resp.acciones.map((a) => <li key={a.id}><Icon n={iconoDe(a)} s={26} />{describir(a)}</li>)}
                     </ul>
                     <div className="ad-sino">
-                      <button className="btn ad-si" onClick={() => guardar(resp.acciones)}><Icon n="check" s={26} />Sí, guardalo</button>
+                      <button className="btn ad-si" disabled={guardando} onClick={() => guardar(resp.acciones)}><Icon n="check" s={26} />{guardando ? "Guardando…" : "Sí, guardalo"}</button>
                       <button className="ad-no" onClick={() => { setResp(null); setToast("No guardé nada."); }}>No</button>
                     </div>
                   </>
@@ -194,13 +219,13 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido }: 
           </section>
         )}
 
-        {tab === "plata" && <Plata d={d} setD={setD} tc={tc} guardar={guardar} />}
+        {tab === "plata" && <Plata d={d} tc={tc} guardar={guardar} />}
         {tab === "piezas" && <Piezas todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} />}
         {tab === "ferias" && <Ferias d={d} guardar={guardar} />}
-        {tab === "fotos" && <Fotos fotos={fotos} d={d} piezas={todas} guardar={guardar} />}
+        {tab === "fotos" && <Fotos fotos={fotos} d={d} piezas={todas} guardar={guardar} enLinea={enLinea} />}
       </main>
 
-      {toast && <p className="ad-toast" role="status"><Icon n="check" s={24} />{toast}</p>}
+      {toast && <p className={"ad-toast" + (mal ? " is-mal" : "")} role={mal ? "alert" : "status"}><Icon n={mal ? "cerrar" : "check"} s={24} />{toast}</p>}
     </div>
   );
 }
@@ -209,9 +234,9 @@ function iconoDe(a: Accion) {
   return a.tipo === "movimiento" ? (a.sentido === "ingreso" ? "mas" : "menos") : a.tipo === "feria" ? "carpa" : a.tipo === "foto" ? "foto" : a.tipo === "visible" ? "ojo" : a.tipo === "precio" ? "moneda" : "percha";
 }
 
-type G = (a: Accion[], msg?: string) => void;
+type G = (a: Accion[], msg?: string) => Promise<void>;
 
-function Plata({ d, setD, tc, guardar }: { d: Datos; setD: (f: (x: Datos) => Datos) => void; tc: TipoCambio; guardar: G }) {
+function Plata({ d, tc, guardar }: { d: Datos; tc: TipoCambio; guardar: G }) {
   const r = resumenMes(d);
   const [f, setF] = useState<{ sentido: Sentido; monto: string; categoria: string; metodo: string; feria: string } | null>(null);
   return (
@@ -257,7 +282,7 @@ function Plata({ d, setD, tc, guardar }: { d: Datos; setD: (f: (x: Datos) => Dat
               <span className={"ad-signo " + m.sentido}><Icon n={m.sentido === "ingreso" ? "mas" : "menos"} s={22} /></span>
               <div><b>{m.concepto}</b><small>{m.categoria} · {m.metodo}{m.feria ? " · " + m.feria : ""} · {fechaLinda(m.fecha)}{m.moneda === "USD" ? ` · $${m.monto}` : ""}</small></div>
               <strong>{m.sentido === "gasto" ? "−" : "+"}{fmt(m.crc)}</strong>
-              {!m.anulado && <button onClick={() => setD((x) => ({ ...x, movs: x.movs.map((y) => (y.id === m.id ? { ...y, anulado: true } : y)) }))}>Anular</button>}
+              {!m.anulado && <button onClick={() => { if (confirm(`¿Anular «${m.concepto}»? Queda tachado y no cuenta en las sumas.`)) guardar([{ id: nid(), tipo: "anular", mov: m.id, nombre: m.concepto }], "Movimiento anulado."); }}>Anular</button>}
             </li>
           ))}
         </ul>
@@ -276,7 +301,7 @@ function Piezas({ todas, colecciones, tipos, guardar }: { todas: Pieza[]; colecc
       <p className="ad-linea">También se lo podés pedir al asistente: «subí la Blusa Jade a 25 mil», «escondé la Falda Paz», «creá la colección Navidad».</p>
       <div className="ad-barra">
         <label className="ad-busca"><Icon n="buscar" s={22} /><input type="search" placeholder="Buscar una pieza" value={q} onChange={(e) => setQ(e.target.value)} /></label>
-        <button className="btn" onClick={() => { const nombre = prompt("¿Cómo se llama la pieza nueva?")?.trim(); if (nombre) guardar([{ id: nid(), tipo: "pieza", nombre, tipoPieza: tipos[0] ?? "Blusas", precio: 0 }], "Pieza agregada."); }}><Icon n="mas" s={22} />Agregar pieza</button>
+        <button className="btn" onClick={() => { const nombre = prompt("¿Cómo se llama la pieza nueva?")?.trim(); if (nombre) guardar([{ id: nid(), tipo: "pieza", nombre, tipoPieza: tipos[0] ?? "Blusas", precio: 0 }], "Pieza agregada. Sale en la tienda apenas tenga foto."); }}><Icon n="mas" s={22} />Agregar pieza</button>
       </div>
       <ul className="ad-piezas">
         {vista.map((p) => (
@@ -321,8 +346,8 @@ function Ferias({ d, guardar }: { d: Datos; guardar: G }) {
   );
 }
 
-function Fotos({ fotos, d, piezas, guardar }: { fotos: FotoPanel[]; d: Datos; piezas: Pieza[]; guardar: G }) {
-  const de = (f: FotoPanel) => d.fotos[f.id] ?? f.pieza ?? "";
+function Fotos({ fotos, d, piezas, guardar, enLinea }: { fotos: FotoPanel[]; d: Datos; piezas: Pieza[]; guardar: G; enLinea: boolean }) {
+  const de = (f: FotoPanel) => d.fotos[f.id] ?? (enLinea ? "" : f.pieza ?? "");
   const sin = fotos.filter((f) => !de(f));
   return (
     <section className="ad-card">

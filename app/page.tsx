@@ -9,7 +9,8 @@ import Ventana from "@/components/Ventana";
 import { fotoSet, fotoSrc, LOOKS } from "@/lib/fotos";
 import Rail from "@/components/Rail";
 import Reveal, { Words } from "@/components/Reveal";
-import { colones, facets, getCatalog, img, srcSet, WHATSAPP } from "@/lib/catalog";
+import { colones, facets, img, srcSet, WHATSAPP } from "@/lib/catalog";
+import { getCatalog } from "@/lib/tienda";
 
 export const revalidate = 900;
 

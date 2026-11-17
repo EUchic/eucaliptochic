@@ -3,7 +3,8 @@ import Link from "next/link";
 import Icon from "@/components/Icons";
 import { Lockup } from "@/components/Logo";
 import Reveal, { Words } from "@/components/Reveal";
-import { facets, getCatalog, WHATSAPP } from "@/lib/catalog";
+import { facets, WHATSAPP } from "@/lib/catalog";
+import { getCatalog } from "@/lib/tienda";
 import { fotoSet, fotoSrc } from "@/lib/fotos";
 
 export const metadata: Metadata = { title: "Andrea" };

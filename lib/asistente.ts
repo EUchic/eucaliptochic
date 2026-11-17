@@ -18,7 +18,8 @@ export type Accion =
   | { id: string; tipo: "mover"; slug: string; nombre: string; coleccion: string }
   | { id: string; tipo: "pieza"; nombre: string; tipoPieza: string; precio: number; coleccion?: string }
   | { id: string; tipo: "feria"; nombre: string; fecha: string; lugar?: string }
-  | { id: string; tipo: "foto"; foto: string; slug: string; nombre: string };
+  | { id: string; tipo: "foto"; foto: string; slug: string; nombre: string }
+  | { id: string; tipo: "anular"; mov: string; nombre: string };
 
 export type Pieza = { slug: string; nombre: string; precio: number; tipo: string; coleccion: string; foto: string; fotos: number; oculta?: boolean };
 export type Mov = Extract<Accion, { tipo: "movimiento" }> & { crc: number; anulado?: boolean; creado: string };
@@ -52,6 +53,7 @@ export function describir(a: Accion): string {
     case "pieza": return `Pieza nueva: ${a.nombre} (${a.tipoPieza}) a ${fmt(a.precio)}${a.coleccion ? ", colección " + a.coleccion : ""}`;
     case "feria": return `Feria nueva: ${a.nombre}, ${fechaLinda(a.fecha)}`;
     case "foto": return `La foto queda en ${a.nombre}`;
+    case "anular": return `Se anula: ${a.nombre}`;
   }
 }
 
@@ -304,5 +306,6 @@ export function aplicar(d: Datos, a: Accion, tc: TipoCambio): Datos {
     }
     case "feria": return { ...x, ferias: [{ id: a.id, nombre: a.nombre, fecha: a.fecha, lugar: a.lugar }, ...x.ferias] };
     case "foto": return { ...x, fotos: { ...x.fotos, [a.foto]: a.slug } };
+    case "anular": return { ...x, movs: x.movs.map((m) => (m.id === a.mov ? { ...m, anulado: true } : m)) };
   }
 }

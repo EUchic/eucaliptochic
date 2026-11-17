@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import Card from "@/components/Card";
 import Icon from "@/components/Icons";
 import Reveal, { Words } from "@/components/Reveal";
-import { facets, getCatalog, img, slugify } from "@/lib/catalog";
+import { facets, img, slugify } from "@/lib/catalog";
+import { getCatalog } from "@/lib/tienda";
 
 type Props = { params: Promise<{ slug: string }> };
 export const revalidate = 900;

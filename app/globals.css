@@ -500,6 +500,9 @@ html[data-nav-off] .nav { transform: translateY(-101%); }
 .ad-main h1 { font: 400 clamp(2.6rem, 5vw, 4.2rem)/1 var(--serif); margin: 10px 0 22px; }
 .ad-main h2 { font: 400 1.9rem/1.1 var(--serif); margin: 34px 0 14px; }
 .ad-prueba { margin: 0; padding: 14px 20px; border-radius: 14px; background: var(--rosa); }
+.ad-prueba.is-mal { background: #f6d6c8; color: #6b2a17; }
+.ad-toast.is-mal { background: #8a3a22; border-radius: 22px; text-align: left; max-width: min(560px, 90vw); }
+.ad-si:disabled { opacity: 0.6; cursor: progress; }
 .ad-acciones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .ad-gr { display: flex; align-items: center; justify-content: center; gap: 14px; min-height: 104px; border-radius: 20px; font: 500 1.5rem var(--sans); background: #fff; transition: transform 0.25s var(--e), box-shadow 0.25s; }
 .ad-gr:hover { transform: translateY(-3px); box-shadow: 0 16px 30px -18px rgb(31 42 37 / 0.5); }

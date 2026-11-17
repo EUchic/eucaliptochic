@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Icon from "@/components/Icons";
 import Reveal, { Words } from "@/components/Reveal";
-import { facets, getCatalog, img, slugify } from "@/lib/catalog";
+import { facets, img, slugify } from "@/lib/catalog";
+import { getCatalog } from "@/lib/tienda";
 
 export const metadata: Metadata = { title: "Colecciones" };
 export const revalidate = 900;

@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Card from "@/components/Card";
 import { Comprar, Galeria } from "@/components/Comprar";
-import { colones, getCatalog, img, srcSet, WHATSAPP } from "@/lib/catalog";
+import { colones, img, srcSet, WHATSAPP } from "@/lib/catalog";
+import { getCatalog } from "@/lib/tienda";
 
 type Props = { params: Promise<{ slug: string }> };
 

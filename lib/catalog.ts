@@ -1,7 +1,7 @@
 import { fotosDePieza } from "./fotos";
-// Fuente de datos del catálogo.
-// Hoy lee el JSON público de la tienda en Squarespace y lo limpia (duplicados, tallas, URLs).
-// Cuando exista la base en Supabase, solo se reemplaza `loadRaw()`; el resto del sitio no cambia.
+// Tipos y utilidades del catálogo (sirven en el servidor y en el navegador).
+// La lectura del catálogo vive en lib/tienda.ts: primero la base de datos de Andrea y, si no responde,
+// el JSON público de la tienda vieja en Squarespace (catalogoSquarespace, aquí abajo).
 
 const SOURCE = process.env.CATALOG_SOURCE_URL ?? "https://www.eucaliptochic.com/tienda?format=json";
 
@@ -38,7 +38,7 @@ function talla(raw: unknown): string {
   if (t.startsWith("TALLA")) return "Talla única";
   return t || "Talla única";
 }
-const ORDEN_TALLA = ["S-M", "M-L", "Talla única"];
+export const ORDEN_TALLA = ["S-M", "M-L", "Talla única"];
 
 type Raw = Record<string, any>;
 
@@ -55,7 +55,7 @@ async function loadRaw(): Promise<Raw | null> {
   }
 }
 
-export async function getCatalog(): Promise<Product[]> {
+export async function catalogoSquarespace(): Promise<Product[]> {
   const raw = await loadRaw();
   if (!raw?.items) return [];
   const cats: Record<string, string> = {};
@@ -114,10 +114,6 @@ export async function getCatalog(): Promise<Product[]> {
   return [...porNombre.values()].filter((p) => p.fotos.length > 0);
 }
 
-export async function getProduct(slug: string) {
-  return (await getCatalog()).find((p) => p.slug === slug) ?? null;
-}
-
 export function facets(products: Product[]) {
   const tipos = [...new Set(products.map((p) => p.tipo))];
   const colecciones = [...new Set(products.map((p) => p.coleccion).filter(Boolean) as string[])];
@@ -125,12 +121,13 @@ export function facets(products: Product[]) {
 }
 
 /** Squarespace redimensiona en su CDN con ?format=NNNw */
+const esSquarespace = (url: string) => url.includes("squarespace-cdn.com");
 export const img = (url: string, w: number) =>
-  url.startsWith("/fotos/") ? `${url}-${w <= 800 ? 800 : 1600}.webp` : `${url}?format=${w}w`;
+  url.startsWith("/fotos/") ? `${url}-${w <= 800 ? 800 : 1600}.webp` : esSquarespace(url) ? `${url}?format=${w}w` : url;
 export const srcSet = (url: string) =>
   url.startsWith("/fotos/")
     ? `${url}-800.webp 800w, ${url}-1600.webp 1600w`
-    : [300, 500, 750, 1000, 1500].map((w) => `${url}?format=${w}w ${w}w`).join(", ");
+    : esSquarespace(url) ? [300, 500, 750, 1000, 1500].map((w) => `${url}?format=${w}w ${w}w`).join(", ") : `${url} 1600w`;
 
 export const colones = (n: number) =>
   n > 0 ? "₡" + n.toLocaleString("es-CR").replace(/,/g, " ").replace(/\./g, " ") : "Consultar precio";
