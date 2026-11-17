@@ -727,6 +727,11 @@ body:has(.ad) .intro, body:has(.ad-entrar) .intro { display: none; }
 .ad-entrar input { height: 64px; padding: 0 20px; border-radius: 14px; border: 1.5px solid var(--salvia); font: 500 1.3rem var(--sans); }
 .ad-entrar p { margin: 0; color: #9a2f3a; font-weight: 500; }
 .ad-entrar small { color: var(--bosque); font-size: 0.95rem; }
+.ad-mant { width: min(520px, 92vw); display: grid; gap: 18px; padding: 34px; border-radius: 24px; background: #fff; color: var(--tinta); }
+.ad-mant section { display: grid; gap: 16px; }
+.ad-mant h2 { margin: 0; font: 400 1.7rem/1.1 var(--serif); }
+.ad-mant-num { margin: 0; font: 400 3rem/1 var(--serif); color: var(--bosque); }
+.ad-mant p[role="status"] { margin: 0; font-size: 1.15rem; color: var(--tinta); }
 @media (max-width: 900px) {
   .ad-main { padding: 16px; }
   .ad-lado nav button { padding: 8px 8px; }

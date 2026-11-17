@@ -87,3 +87,9 @@ export async function subirFoto(ruta: string, datos: ArrayBuffer, tipo: string):
   }
   return `${URL_BASE}/storage/v1/object/public/fotos/${ruta}`;
 }
+
+// Mudanza de las fotos viejas de Squarespace a Storage (una sola vez, desde /admin/mantenimiento).
+export const fotosEnSquarespace = (lim: number) =>
+  rpc<{ id: string; url: string; slug: string }[]>("fotos_en_squarespace", { lim }, { secreta: true });
+export const fotoMudada = (id: string, url: string) => rpc<number>("foto_mudada", { p_id: id, p_url: url }, { secreta: true });
+export const fotosPorMudar = () => rpc<number>("fotos_por_mudar", {}, { secreta: true });

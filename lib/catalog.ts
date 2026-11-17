@@ -124,7 +124,7 @@ export function facets(products: Product[]) {
 /** Squarespace redimensiona en su CDN con ?format=NNNw */
 // Tres orígenes de fotos: propias en /public/fotos, subidas por Andrea a Supabase (pareja -800/-1600) y Squarespace.
 const esSquarespace = (url: string) => url.includes("squarespace-cdn.com");
-const SUBIDA = /-1600\.(webp|jpg)$/;
+const SUBIDA = /-1600\.(webp|jpg|png)$/;
 export const img = (url: string, w: number) =>
   url.startsWith("/fotos/") ? `${url}-${w <= 800 ? 800 : 1600}.webp`
   : SUBIDA.test(url) ? (w <= 800 ? url.replace(SUBIDA, "-800.$1") : url)
