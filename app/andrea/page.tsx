@@ -3,7 +3,8 @@ import Link from "next/link";
 import Icon from "@/components/Icons";
 import { Lockup } from "@/components/Logo";
 import Reveal, { Words } from "@/components/Reveal";
-import { facets, getCatalog, img, WHATSAPP } from "@/lib/catalog";
+import { facets, getCatalog, WHATSAPP } from "@/lib/catalog";
+import { fotoSet, fotoSrc } from "@/lib/fotos";
 
 export const metadata: Metadata = { title: "Andrea" };
 export const revalidate = 900;
@@ -11,7 +12,11 @@ export const revalidate = 900;
 export default async function Andrea() {
   const cat = await getCatalog();
   const { colecciones, tipos } = facets(cat);
-  const fotos = cat.filter((p) => p.fotos.length >= 2).slice(0, 3);
+  const fotos = [
+    ["andrea-negro-cocina", "Andrea de negro en la cocina"],
+    ["andrea-lichi-cocina", "Andrea con el Vestido Lichi y una taza de café"],
+    ["andrea-cafe-eucalipto", "Andrea junto a un ramo de eucalipto"],
+  ];
   return (
     <div className="pag">
       <section className="and-hero">
@@ -39,9 +44,9 @@ export default async function Andrea() {
       </section>
 
       <section className="wrap and-fotos">
-        {fotos.map((p, i) => (
-          <Reveal kind="img" delay={i * 150} key={p.slug} className={"and-f and-f" + i}>
-            <img data-speed={i === 1 ? "-0.05" : "0.04"} src={img(p.fotos[1] ?? p.fotos[0], 1000)} alt={p.nombre} loading="lazy" />
+        {fotos.map(([id, alt], i) => (
+          <Reveal kind="img" delay={i * 150} key={id} className={"and-f and-f" + i}>
+            <img data-speed={i === 1 ? "-0.05" : "0.04"} src={fotoSrc(id, 800)} srcSet={fotoSet(id)} sizes="(max-width: 860px) 50vw, 33vw" alt={alt} loading="lazy" />
           </Reveal>
         ))}
       </section>

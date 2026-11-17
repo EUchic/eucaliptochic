@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 
-type Props = { children: ReactNode; kind?: "up" | "img" | "words" | "line"; delay?: number; className?: string; as?: "div" | "span" | "li" | "p" | "h1" | "h2" };
+type Props = { children: ReactNode; kind?: "up" | "img" | "words" | "line" | "logo"; delay?: number; className?: string; as?: "div" | "span" | "li" | "p" | "h1" | "h2" };
 
 /** Aparece cuando entra en pantalla. `kind` elige el gesto: subir, destapar foto, palabra por palabra o línea. */
 export default function Reveal({ children, kind = "up", delay = 0, className = "", as: Tag = "div" }: Props) {

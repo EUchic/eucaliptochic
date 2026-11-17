@@ -3,7 +3,10 @@ import Card from "@/components/Card";
 import Colecciones from "@/components/Colecciones";
 import Icon from "@/components/Icons";
 import { Lockup, Mark } from "@/components/Logo";
+import Looks from "@/components/Looks";
 import Portada from "@/components/Portada";
+import Ventana from "@/components/Ventana";
+import { fotoSet, fotoSrc, LOOKS } from "@/lib/fotos";
 import Rail from "@/components/Rail";
 import Reveal, { Words } from "@/components/Reveal";
 import { colones, facets, getCatalog, img, srcSet, WHATSAPP } from "@/lib/catalog";
@@ -23,7 +26,18 @@ export default async function Home() {
   }
   const conPrecio = cat.filter((p) => p.precio > 0);
   const nuevas = conPrecio.filter((p) => p.nuevo);
-  const portada = [...conPrecio].sort((a, b) => b.fotos.length - a.fotos.length || a.orden - b.orden).slice(0, 5);
+  // Portada: primero las piezas que tienen foto nueva de Andrea, después las que tienen más fotos.
+  const conAndrea = conPrecio.filter((p) => p.fotos[0]?.startsWith("/fotos/andrea"));
+  const portada = [...conAndrea, ...[...conPrecio].filter((p) => !conAndrea.includes(p)).sort((a, b) => b.fotos.length - a.fotos.length || a.orden - b.orden)].slice(0, 5);
+  const porSlug = new Map(cat.map((p) => [p.slug, p]));
+  const looks = LOOKS.map((l) => ({
+    img: l.img,
+    fondo: l.fondo,
+    piezas: l.piezas.map(([nombre, slug]) => {
+      const p = porSlug.get(slug);
+      return { nombre, href: p ? `/tienda/${slug}` : null, precio: p && p.precio ? colones(p.precio) : null };
+    }),
+  }));
   const { colecciones, tipos } = facets(cat);
   const cols = colecciones.map((nombre) => {
     const piezas = cat.filter((p) => p.coleccion === nombre);
@@ -50,6 +64,14 @@ export default async function Home() {
         </div>
       </div>
 
+      <Ventana
+        foto={fotoSrc("andrea-cafe-eucalipto")}
+        set={fotoSet("andrea-cafe-eucalipto")}
+        alt="Andrea con blusa y capri café junto a un ramo de eucalipto"
+        frase="Ropa cómoda, hecha para moverse con vos."
+        firma="By Andrea Bermúdez"
+      />
+
       <section className="tipos wrap" aria-labelledby="tipos-t">
         <Reveal kind="words" as="h2" className="titulo"><span id="tipos-t"><Words text="¿Qué andás buscando?" /></span></Reveal>
         <ul>
@@ -74,6 +96,8 @@ export default async function Home() {
           {(nuevas.length ? nuevas : cat).slice(0, 12).map((p, i) => <Card key={p.slug} p={p} i={i} sizes="(max-width: 700px) 70vw, 26vw" />)}
         </Rail>
       </section>
+
+      <Looks looks={looks} />
 
       <Colecciones items={cols} />
 

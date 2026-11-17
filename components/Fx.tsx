@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
  * Efectos globales, un solo listener para todo el sitio:
  *  - el menú se esconde al bajar y vuelve al subir
  *  - [data-speed] se mueve a otra velocidad que el scroll (parallax)
- *  - cursor redondo "Ver" sobre [data-cursor] (solo con mouse)
+ *  - sobre fotos con [data-cursor], un círculo de vidrio con una flecha sigue al mouse (solo con mouse)
  */
 export default function Fx() {
   const cur = useRef<HTMLDivElement>(null);
@@ -44,7 +44,6 @@ export default function Fx() {
       const hit = (e.target as HTMLElement).closest?.("[data-cursor]") as HTMLElement | null;
       if (c) {
         c.classList.toggle("is-on", !!hit);
-        if (hit) c.textContent = hit.dataset.cursor || "Ver";
       }
     };
     const follow = () => {
@@ -65,5 +64,9 @@ export default function Fx() {
     };
   }, []);
 
-  return <div className="cursor" ref={cur} aria-hidden />;
+  return (
+    <div className="cursor" ref={cur} aria-hidden>
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7M9 7h8v8" /></svg>
+    </div>
+  );
 }

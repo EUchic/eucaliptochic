@@ -1,3 +1,4 @@
+import { fotosDePieza } from "./fotos";
 // Fuente de datos del catálogo.
 // Hoy lee el JSON público de la tienda en Squarespace y lo limpia (duplicados, tallas, URLs).
 // Cuando exista la base en Supabase, solo se reemplaza `loadRaw()`; el resto del sitio no cambia.
@@ -105,6 +106,11 @@ export async function getCatalog(): Promise<Product[]> {
     if (prev.tipo === "Otros") prev.tipo = p.tipo;
     if (!prev.precio) prev.precio = p.precio;
   });
+  // Fotos propias nuevas: van primero, antes que las de Squarespace.
+  for (const p of porNombre.values()) {
+    const extra = fotosDePieza(p.slug);
+    if (extra.length) p.fotos = [...extra, ...p.fotos.filter((f) => !extra.includes(f))];
+  }
   return [...porNombre.values()].filter((p) => p.fotos.length > 0);
 }
 
@@ -119,8 +125,12 @@ export function facets(products: Product[]) {
 }
 
 /** Squarespace redimensiona en su CDN con ?format=NNNw */
-export const img = (url: string, w: number) => `${url}?format=${w}w`;
-export const srcSet = (url: string) => [300, 500, 750, 1000, 1500].map((w) => `${img(url, w)} ${w}w`).join(", ");
+export const img = (url: string, w: number) =>
+  url.startsWith("/fotos/") ? `${url}-${w <= 800 ? 800 : 1600}.webp` : `${url}?format=${w}w`;
+export const srcSet = (url: string) =>
+  url.startsWith("/fotos/")
+    ? `${url}-800.webp 800w, ${url}-1600.webp 1600w`
+    : [300, 500, 750, 1000, 1500].map((w) => `${url}?format=${w}w ${w}w`).join(", ");
 
 export const colones = (n: number) =>
   n > 0 ? "₡" + n.toLocaleString("es-CR").replace(/,/g, " ").replace(/\./g, " ") : "Consultar precio";

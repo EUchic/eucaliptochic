@@ -4,13 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Icon from "./Icons";
 import { Lockup } from "./Logo";
+import Reveal from "./Reveal";
 
 export default function Footer() {
   if (usePathname().startsWith("/admin")) return null;
   return (
     <footer className="pie">
       <div className="wrap pie-grid">
-        <Lockup className="pie-marca" />
         <nav aria-label="Pie">
           <b>Comprar</b>
           <Link href="/tienda">Toda la tienda</Link>
@@ -29,6 +29,9 @@ export default function Footer() {
         </div>
         <p className="pie-nota">Eucalipto Chic, by Andrea Bermúdez. Costa Rica, desde 2020.</p>
       </div>
+      <Reveal kind="logo" className="pie-marca">
+        <Lockup />
+      </Reveal>
     </footer>
   );
 }
