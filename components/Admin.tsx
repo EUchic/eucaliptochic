@@ -69,6 +69,36 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
     speechSynthesis.speak(u);
   }, [voz]);
 
+  const tomarEstado = (e?: { piezas: Pieza[]; colecciones: string[]; datos: Datos }) => {
+    if (!e) return;
+    setBase(e.piezas); setCols(e.colecciones); setD(e.datos);
+  };
+  const [subiendo, setSubiendo] = useState("");
+
+  const subirFotos = useCallback(async (p: Pieza, archivos: File[]) => {
+    if (!archivos.length) return;
+    setSubiendo(p.slug);
+    try {
+      for (const f of archivos.slice(0, 8)) {
+        const [grande, chica] = [await achicar(f, 1600), await achicar(f, 800)];
+        const fd = new FormData();
+        fd.set("id", nid()); fd.set("slug", p.slug); fd.set("grande", grande, "grande"); fd.set("chica", chica, "chica");
+        const r = await fetch("/api/fotos", { method: "POST", body: fd });
+        if (r.status === 401) { location.href = "/admin/entrar"; return; }
+        const j = await r.json().catch(() => ({}));
+        tomarEstado(j.estado);
+        if (!r.ok) throw new Error(j.error || "No se pudo subir la foto.");
+      }
+      const m = archivos.length > 1 ? `Fotos subidas a ${p.nombre}. Ya salen en la tienda.` : `Foto subida a ${p.nombre}. Ya sale en la tienda.`;
+      setMal(false); setToast(m); hablar(m);
+    } catch (e) {
+      const m = e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. La foto no se subió.";
+      setMal(true); setToast(m); hablar(m);
+    } finally {
+      setSubiendo("");
+    }
+  }, [hablar]);
+
   const guardar = useCallback(async (acciones: Accion[], msg = "Listo, guardado.") => {
     if (!enLinea) {
       setD((x) => acciones.reduce((acc, a) => aplicar(acc, a, tc), x));
@@ -81,7 +111,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
       const r = await fetch("/api/acciones", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ acciones }) });
       if (r.status === 401) { location.href = "/admin/entrar"; return; }
       const j = await r.json().catch(() => ({}));
-      if (j.estado) { setBase(j.estado.piezas); setCols(j.estado.colecciones); setD(j.estado.datos); }
+      tomarEstado(j.estado);
       if (!r.ok) throw new Error(j.error || "No se pudo guardar. Probá de nuevo.");
       const dicho = msg + (acciones.some(tocaTienda) ? " La tienda ya está al día." : "");
       setResp(null); setMal(false); setToast(dicho); hablar(msg);
@@ -220,7 +250,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
         )}
 
         {tab === "plata" && <Plata d={d} tc={tc} guardar={guardar} />}
-        {tab === "piezas" && <Piezas todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} />}
+        {tab === "piezas" && <Piezas todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} enLinea={enLinea} subir={subirFotos} subiendo={subiendo} />}
         {tab === "ferias" && <Ferias d={d} guardar={guardar} />}
         {tab === "fotos" && <Fotos fotos={fotos} d={d} piezas={todas} guardar={guardar} enLinea={enLinea} />}
       </main>
@@ -292,7 +322,7 @@ function Plata({ d, tc, guardar }: { d: Datos; tc: TipoCambio; guardar: G }) {
   );
 }
 
-function Piezas({ todas, colecciones, tipos, guardar }: { todas: Pieza[]; colecciones: string[]; tipos: string[]; guardar: G }) {
+function Piezas({ todas, colecciones, tipos, guardar, enLinea, subir, subiendo }: { todas: Pieza[]; colecciones: string[]; tipos: string[]; guardar: G; enLinea: boolean; subir: (p: Pieza, f: File[]) => void; subiendo: string }) {
   const [q, setQ] = useState("");
   const vista = todas.filter((p) => p.nombre.toLowerCase().includes(q.toLowerCase()));
   return (
@@ -311,6 +341,22 @@ function Piezas({ todas, colecciones, tipos, guardar }: { todas: Pieza[]; colecc
             <label>Precio ₡<input inputMode="numeric" defaultValue={p.precio || ""} placeholder="Sin precio" onBlur={(e) => { const v = Number(e.target.value.replace(/\D/g, "")); if (v && v !== p.precio) guardar([{ id: nid(), tipo: "precio", slug: p.slug, nombre: p.nombre, precio: v }], "Precio cambiado."); }} /></label>
             <label>Colección<select value={p.coleccion} onChange={(e) => guardar([{ id: nid(), tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: e.target.value }], "Colección cambiada.")}><option value="">Sin colección</option>{colecciones.map((c) => <option key={c}>{c}</option>)}</select></label>
             <button className={"ad-ojo" + (p.oculta ? "" : " is-on")} aria-pressed={!p.oculta} onClick={() => guardar([{ id: nid(), tipo: "visible", slug: p.slug, nombre: p.nombre, visible: !!p.oculta }], p.oculta ? "Ya se ve en la tienda." : "Escondida de la tienda.")}><Icon n="ojo" s={24} />{p.oculta ? "Escondida" : "A la vista"}</button>
+            {enLinea && (
+              <div className="ad-tira">
+                {(p.lista ?? []).map((f, i) => (
+                  <figure key={f.id}>
+                    <img src={f.url} alt="" loading="lazy" />
+                    {i === 0 && <figcaption>Portada</figcaption>}
+                    <button aria-label={`Quitar esta foto de ${p.nombre}`} onClick={() => { if (confirm(`¿Quitar esta foto de ${p.nombre}?`)) guardar([{ id: nid(), tipo: "quitar_foto", foto_id: f.id, slug: p.slug, nombre: p.nombre }], "Foto quitada."); }}><Icon n="cerrar" s={18} /></button>
+                  </figure>
+                ))}
+                <label className={"ad-subir" + (subiendo === p.slug ? " is-busy" : "")}>
+                  <input type="file" accept="image/*" multiple disabled={!!subiendo} onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; subir(p, fs); }} />
+                  <Icon n={subiendo === p.slug ? "foto" : "mas"} s={26} />
+                  <span>{subiendo === p.slug ? "Subiendo…" : (p.lista?.length ? "Otra foto" : "Poner foto")}</span>
+                </label>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -368,6 +414,31 @@ function Fotos({ fotos, d, piezas, guardar, enLinea }: { fotos: FotoPanel[]; d: 
       </ul>
     </section>
   );
+}
+
+/** Achica una foto en el teléfono antes de subirla (más rápido y liviano). WebP si se puede; si no, JPEG. */
+async function achicar(archivo: File, lado: number): Promise<Blob> {
+  const url = URL.createObjectURL(archivo);
+  try {
+    const im = new Image();
+    im.src = url;
+    await im.decode();
+    const k = Math.min(1, lado / Math.max(im.naturalWidth, im.naturalHeight));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
+    const cx = cv.getContext("2d")!;
+    cx.imageSmoothingQuality = "high";
+    cx.drawImage(im, 0, 0, cv.width, cv.height);
+    const hacer = (t: string, q: number) => new Promise<Blob | null>((r) => cv.toBlob(r, t, q));
+    let b = await hacer("image/webp", 0.84);
+    if (!b || b.type !== "image/webp") b = await hacer("image/jpeg", 0.86);
+    if (!b) throw new Error("No pude leer esa foto. Probá con otra.");
+    return b;
+  } catch (e) {
+    throw e instanceof Error && e.message.startsWith("No pude") ? e : new Error("No pude leer esa foto. Probá con otra.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function Chips({ titulo, ops, v, set }: { titulo: string; ops: string[]; v?: string; set: (o: string) => void }) {

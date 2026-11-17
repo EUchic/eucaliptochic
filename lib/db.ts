@@ -12,11 +12,9 @@ const SECRETA = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_
 
 export const hayBase = () => Boolean(SECRETA);
 
-function cabeceras(llave: string): HeadersInit {
-  const h: Record<string, string> = { apikey: llave, "content-type": "application/json", accept: "application/json" };
-  if (llave.startsWith("eyJ")) h.authorization = `Bearer ${llave}`; // llaves viejas (JWT)
-  return h;
-}
+// Igual que supabase-js: la llave va en apikey y en Authorization (Supabase la traduce a su token interno).
+const cabeceras = (llave: string, tipo = "application/json"): Record<string, string> =>
+  ({ apikey: llave, authorization: `Bearer ${llave}`, "content-type": tipo, accept: "application/json" });
 
 export class ErrorBase extends Error {}
 
@@ -45,7 +43,7 @@ export type FilaCatalogo = {
 export const catalogoBase = () => rpc<FilaCatalogo[]>("catalogo_publico", {}, { next: { revalidate: 300, tags: ["catalogo"] } });
 
 type EstadoCrudo = {
-  piezas: (Pieza & { foto: string | null })[];
+  piezas: (Pieza & { foto: string | null; lista?: { id: string; url: string }[] })[];
   colecciones: string[];
   ferias: Feria[];
   movs: (Mov & { feria: string | null })[];
@@ -56,7 +54,10 @@ type EstadoCrudo = {
 export async function estadoPanel(): Promise<{ piezas: Pieza[]; colecciones: string[]; datos: Datos }> {
   const e = await rpc<EstadoCrudo>("estado_panel", {}, { secreta: true });
   return {
-    piezas: e.piezas.map((p) => ({ ...p, precio: Number(p.precio), foto: p.foto ? img(p.foto, 300) : "", fotos: Number(p.fotos) })),
+    piezas: e.piezas.map((p) => ({
+      ...p, precio: Number(p.precio), foto: p.foto ? img(p.foto, 300) : "", fotos: Number(p.fotos),
+      lista: (p.lista ?? []).map((f) => ({ id: f.id, url: img(f.url, 300) })),
+    })),
     colecciones: e.colecciones,
     datos: {
       ...VACIO,
@@ -69,5 +70,20 @@ export async function estadoPanel(): Promise<{ piezas: Pieza[]; colecciones: str
 }
 
 /** Guarda una acción ya validada. La base ignora la misma acción si llega dos veces (mismo id). */
-export const guardarAccion = (a: Accion & { crc?: number; tipoCambio?: number }) =>
+export const guardarAccion = (a: (Accion & { crc?: number; tipoCambio?: number }) | { id: string; tipo: "foto_nueva"; slug: string; url: string }) =>
   rpc<{ ok: boolean; repetida?: boolean }>("aplicar_accion", { a }, { secreta: true });
+
+/** Sube una foto al bucket público "fotos" y devuelve su URL pública. Si ya existe (reintento), la reutiliza. */
+export async function subirFoto(ruta: string, datos: ArrayBuffer, tipo: string): Promise<string> {
+  const r = await fetch(`${URL_BASE}/storage/v1/object/fotos/${ruta}`, {
+    method: "POST",
+    headers: { ...cabeceras(SECRETA, tipo), "cache-control": "max-age=31536000", "x-upsert": "false" },
+    body: datos,
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!r.ok && r.status !== 409) {
+    const j = (await r.json().catch(() => null)) as { message?: string; error?: string } | null;
+    if (!/exist|Duplicate/i.test(j?.message ?? j?.error ?? "")) throw new ErrorBase(j?.message || `Storage respondió ${r.status}`);
+  }
+  return `${URL_BASE}/storage/v1/object/public/fotos/${ruta}`;
+}

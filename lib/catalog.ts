@@ -121,13 +121,17 @@ export function facets(products: Product[]) {
 }
 
 /** Squarespace redimensiona en su CDN con ?format=NNNw */
+// Tres orígenes de fotos: propias en /public/fotos, subidas por Andrea a Supabase (pareja -800/-1600) y Squarespace.
 const esSquarespace = (url: string) => url.includes("squarespace-cdn.com");
+const SUBIDA = /-1600\.(webp|jpg)$/;
 export const img = (url: string, w: number) =>
-  url.startsWith("/fotos/") ? `${url}-${w <= 800 ? 800 : 1600}.webp` : esSquarespace(url) ? `${url}?format=${w}w` : url;
+  url.startsWith("/fotos/") ? `${url}-${w <= 800 ? 800 : 1600}.webp`
+  : SUBIDA.test(url) ? (w <= 800 ? url.replace(SUBIDA, "-800.$1") : url)
+  : esSquarespace(url) ? `${url}?format=${w}w` : url;
 export const srcSet = (url: string) =>
-  url.startsWith("/fotos/")
-    ? `${url}-800.webp 800w, ${url}-1600.webp 1600w`
-    : esSquarespace(url) ? [300, 500, 750, 1000, 1500].map((w) => `${url}?format=${w}w ${w}w`).join(", ") : `${url} 1600w`;
+  url.startsWith("/fotos/") ? `${url}-800.webp 800w, ${url}-1600.webp 1600w`
+  : SUBIDA.test(url) ? `${url.replace(SUBIDA, "-800.$1")} 800w, ${url} 1600w`
+  : esSquarespace(url) ? [300, 500, 750, 1000, 1500].map((w) => `${url}?format=${w}w ${w}w`).join(", ") : `${url} 1600w`;
 
 export const colones = (n: number) =>
   n > 0 ? "₡" + n.toLocaleString("es-CR").replace(/,/g, " ").replace(/\./g, " ") : "Consultar precio";

@@ -1,27 +1,14 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { revalidatePath, revalidateTag } from "next/cache";
 import type { Accion } from "@/lib/asistente";
-import { ErrorBase, estadoPanel, guardarAccion, hayBase } from "@/lib/db";
+import { ErrorBase, estadoPanel, guardarAccion } from "@/lib/db";
 import { tipoCambioHacienda } from "@/lib/hacienda";
-import { COOKIE, protegido, valida } from "@/lib/sesion";
+import { no, permitido, refrescarTienda } from "@/lib/panel";
 import { Invalida, tocaTienda, validar } from "@/lib/validar";
 
 // Guarda lo que Andrea confirmó en el panel y refresca la tienda.
 // Doble candado: el middleware y esta ruta revisan la sesión. Sin clave del panel no se guarda nada.
 
 export const dynamic = "force-dynamic";
-
-const no = (error: string, status: number) => NextResponse.json({ error }, { status });
-
-async function permitido(req: Request) {
-  if (!protegido()) return no("Falta ponerle clave al panel (ADMIN_PASSWORD en Vercel).", 403);
-  if (!hayBase()) return no("Falta conectar la base de datos (SUPABASE_SECRET_KEY en Vercel).", 503);
-  if (!(await valida((await cookies()).get(COOKIE)?.value))) return no("Entrá de nuevo al panel.", 401);
-  const origen = req.headers.get("origin");
-  if (origen && new URL(origen).host !== req.headers.get("host")) return no("Origen no permitido.", 403);
-  return null;
-}
 
 export async function GET(req: Request) {
   const bloqueo = await permitido(req);
@@ -84,11 +71,6 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ ok: true, hechas });
   }
-}
-
-function refrescarTienda() {
-  revalidateTag("catalogo");
-  revalidatePath("/", "layout");
 }
 
 function legible(msg: string) {

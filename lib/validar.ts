@@ -85,9 +85,14 @@ export function validar(x: unknown): Accion {
       if (!UUID.test(mov)) throw new Invalida("No encontré ese movimiento.");
       return { id, tipo: "anular", mov, nombre: texto(a.nombre, 300, "el detalle", true) || "movimiento" };
     }
+    case "quitar_foto": {
+      const foto_id = String(a.foto_id ?? "");
+      if (!UUID.test(foto_id)) throw new Invalida("No encontré esa foto.");
+      return { id, tipo: "quitar_foto", foto_id, slug: slug(a.slug), nombre: texto(a.nombre, 80, "el nombre") };
+    }
     default: throw new Invalida("No reconozco esa acción.");
   }
 }
 
 /** Acciones que cambian lo que se ve en la tienda (para refrescar la página). */
-export const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion"].includes(a.tipo);
+export const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "quitar_foto"].includes(a.tipo);
