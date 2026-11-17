@@ -691,7 +691,17 @@ body:has(.ad) .intro, body:has(.ad-entrar) .intro { display: none; }
 .ad-dos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .ad-busca { display: flex !important; grid-auto-flow: column; align-items: center; gap: 10px !important; flex: 1; min-width: 240px; height: 60px; padding: 0 20px; border-radius: 999px; background: var(--niebla); color: var(--bosque); }
 .ad-busca input { flex: 1; height: auto !important; border: 0 !important; background: none !important; padding: 0 !important; outline: none; }
-.ad-piezas li { grid-template-columns: 76px 1.4fr 0.8fr 1fr auto; align-items: center; }
+.ad-piezas { container-type: inline-size; }
+.ad-piezas li { grid-template-columns: 76px minmax(170px, 1fr) minmax(0, 1.7fr); align-items: center; }
+.ad-pieza-ctrl { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; min-width: 0; }
+.ad-pieza-ctrl label { flex: 1 1 150px; min-width: 0; display: grid; gap: 6px; }
+.ad-pieza-ctrl label + label { flex: 1.4 1 220px; }
+.ad-pieza-ctrl input, .ad-pieza-ctrl select { width: 100%; min-width: 0; }
+.ad-pieza-ctrl .ad-ojo { flex: 0 0 auto; }
+@container (max-width: 760px) {
+  .ad-piezas li { grid-template-columns: 76px 1fr; }
+  .ad-piezas li > :nth-child(n + 3) { grid-column: 1 / -1; }
+}
 .ad-pieza-nombre b { display: block; font: 400 1.4rem/1.15 var(--serif); }
 .ad-pieza-nombre small { color: var(--bosque); font-size: 0.95rem; }
 .ad-tira { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }

@@ -1,9 +1,9 @@
 import { fotosDePieza } from "./fotos";
 // Tipos y utilidades del catálogo (sirven en el servidor y en el navegador).
-// La lectura del catálogo vive en lib/tienda.ts: primero la base de datos de Andrea y, si no responde,
-// el JSON público de la tienda vieja en Squarespace (catalogoSquarespace, aquí abajo).
+// La lectura del catálogo vive en lib/tienda.ts (base de datos de Andrea). catalogoSquarespace queda solo
+// para pruebas locales con un JSON en el formato de la tienda vieja.
 
-const SOURCE = process.env.CATALOG_SOURCE_URL ?? "https://www.eucaliptochic.com/tienda?format=json";
+const SOURCE = process.env.CATALOG_SOURCE_URL ?? "";
 
 export type Variant = { sku: string; talla: string; color: string | null };
 export type Product = {
@@ -18,6 +18,7 @@ export type Product = {
   variantes: Variant[];
   nuevo: boolean;
   orden: number;
+  urlVieja?: string; // dirección en la tienda vieja de Squarespace
 };
 
 const TIPO_POR_PALABRA: Record<string, string> = {

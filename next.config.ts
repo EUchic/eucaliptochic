@@ -10,6 +10,15 @@ const securityHeaders = [
 
 const config: NextConfig = {
   poweredByHeader: false,
+  // Páginas de la web vieja en Squarespace → su equivalente nuevo.
+  async redirects() {
+    return [
+      { source: "/acerca", destination: "/andrea", permanent: true },
+      { source: "/contacto", destination: "/encontranos", permanent: true },
+      { source: "/cart", destination: "/tienda", permanent: false },
+      { source: "/checkout", destination: "/tienda", permanent: false },
+    ];
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

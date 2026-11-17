@@ -338,9 +338,11 @@ function Piezas({ todas, colecciones, tipos, guardar, enLinea, subir, subiendo }
           <li key={p.slug} className={p.oculta ? "is-off" : ""}>
             {p.foto ? <img src={p.foto} alt="" loading="lazy" /> : <span className="ad-sinfoto"><Icon n="foto" s={30} /></span>}
             <div className="ad-pieza-nombre"><b>{p.nombre}</b><small>{p.tipo}{p.coleccion ? " · " + p.coleccion : ""}</small></div>
-            <label>Precio ₡<input inputMode="numeric" defaultValue={p.precio || ""} placeholder="Sin precio" onBlur={(e) => { const v = Number(e.target.value.replace(/\D/g, "")); if (v && v !== p.precio) guardar([{ id: nid(), tipo: "precio", slug: p.slug, nombre: p.nombre, precio: v }], "Precio cambiado."); }} /></label>
-            <label>Colección<select value={p.coleccion} onChange={(e) => guardar([{ id: nid(), tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: e.target.value }], "Colección cambiada.")}><option value="">Sin colección</option>{colecciones.map((c) => <option key={c}>{c}</option>)}</select></label>
-            <button className={"ad-ojo" + (p.oculta ? "" : " is-on")} aria-pressed={!p.oculta} onClick={() => guardar([{ id: nid(), tipo: "visible", slug: p.slug, nombre: p.nombre, visible: !!p.oculta }], p.oculta ? "Ya se ve en la tienda." : "Escondida de la tienda.")}><Icon n="ojo" s={24} />{p.oculta ? "Escondida" : "A la vista"}</button>
+            <div className="ad-pieza-ctrl">
+              <label>Precio ₡<input inputMode="numeric" defaultValue={p.precio || ""} placeholder="Sin precio" onBlur={(e) => { const v = Number(e.target.value.replace(/\D/g, "")); if (v && v !== p.precio) guardar([{ id: nid(), tipo: "precio", slug: p.slug, nombre: p.nombre, precio: v }], "Precio cambiado."); }} /></label>
+              <label>Colección<select value={p.coleccion} onChange={(e) => guardar([{ id: nid(), tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: e.target.value }], "Colección cambiada.")}><option value="">Sin colección</option>{colecciones.map((c) => <option key={c}>{c}</option>)}</select></label>
+              <button className={"ad-ojo" + (p.oculta ? "" : " is-on")} aria-pressed={!p.oculta} onClick={() => guardar([{ id: nid(), tipo: "visible", slug: p.slug, nombre: p.nombre, visible: !!p.oculta }], p.oculta ? "Ya se ve en la tienda." : "Escondida de la tienda.")}><Icon n="ojo" s={24} />{p.oculta ? "Escondida" : "A la vista"}</button>
+            </div>
             {enLinea && (
               <div className="ad-tira">
                 {(p.lista ?? []).map((f, i) => (

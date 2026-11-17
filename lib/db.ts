@@ -37,7 +37,7 @@ async function rpc<T>(fn: string, args: object, opciones: { secreta?: boolean; c
 
 /** Catálogo publicado, tal como lo guarda la base. Se cachea con la etiqueta "catalogo". */
 export type FilaCatalogo = {
-  slug: string; nombre: string; tipo: string; precio: number; nuevo: boolean; orden: number; coleccion: string | null;
+  slug: string; nombre: string; tipo: string; precio: number; nuevo: boolean; orden: number; coleccion: string | null; url_vieja?: string | null;
   variantes: { sku: string | null; talla: string; color: string | null }[]; fotos: string[];
 };
 export const catalogoBase = () => rpc<FilaCatalogo[]>("catalogo_publico", {}, { next: { revalidate: 300, tags: ["catalogo"] } });
