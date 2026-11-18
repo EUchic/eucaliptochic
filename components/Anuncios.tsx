@@ -2,6 +2,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Icon from "./Icon";
 import { colones } from "@/lib/catalog";
+
+/** Como `colones`, pero muestra ₡0 en vez de "Consultar precio" (aquí 0 es un monto real). */
+const aColones = (n: number) => (n > 0 ? colones(n) : "₡0");
 import type { Feria } from "@/lib/asistente";
 
 // Promociones de Instagram, paso a paso y en palabras simples.
@@ -99,7 +102,7 @@ export default function Anuncios({ ferias, arrancar, alArrancar, avisar }: {
     if (!(monto > 0)) return;
     try {
       const j = await api({ accion: "tope", monto });
-      setInfo(j); avisar(`Listo: tu tope del mes es ${colones(monto)}.`);
+      setInfo(j); avisar(`Listo: tu tope del mes es ${aColones(monto)}.`);
       setVista(post || vista === "tope" && idPromo ? "post" : "inicio");
     } catch (e) { avisar((e as Error).message, true); }
   }
@@ -155,7 +158,7 @@ export default function Anuncios({ ferias, arrancar, alArrancar, avisar }: {
               <p>Primero poné cuánto es lo máximo que querés gastar al mes.</p>
             ) : (
               <>
-                <p>Este mes llevás <b>{colones(info.usado ?? 0)}</b> de tu tope de <b>{colones(info.tope)}</b></p>
+                <p>Este mes llevás <b>{aColones(info.usado ?? 0)}</b> de tu tope de <b>{aColones(info.tope)}</b></p>
                 <i><span style={{ width: `${Math.min(100, ((info.usado ?? 0) / Math.max(1, info.tope)) * 100)}%` }} /></i>
               </>
             )}
@@ -178,7 +181,7 @@ export default function Anuncios({ ferias, arrancar, alArrancar, avisar }: {
                       : "No se pudo crear (no se cobró nada)"}
                   </span>
                   {p.estado !== "error" && p.estado !== "creando" && (
-                    <small>Le llegó a {p.alcance.toLocaleString("es-CR")} personas · {p.mensajes} te escribieron · Gastado {colones(conIva(Number(p.gastado)))} con IVA, de {colones(conIva(p.total))} máximo</small>
+                    <small>Le llegó a {p.alcance.toLocaleString("es-CR")} personas · {p.mensajes} te escribieron · Gastado {aColones(conIva(Number(p.gastado)))} con IVA, de {aColones(conIva(p.total))} máximo</small>
                   )}
                 </div>
                 {p.estado === "activa" && <button className="ad-an-parar" onClick={() => parar(p)}>Detener</button>}
@@ -194,7 +197,7 @@ export default function Anuncios({ ferias, arrancar, alArrancar, avisar }: {
           <h1>¿Cuánto es lo máximo que querés gastar en anuncios al mes?</h1>
           <p className="ad-an-ayuda">El sistema nunca se pasa de este monto, ya contando el 13% de IVA que cobra el banco. Lo podés cambiar cuando querás.</p>
           <div className="ad-an-opciones">
-            {TOPES.map((t) => <button key={t} className={info.tope === t ? "is-on" : ""} onClick={() => guardarTope(t)}><b>{colones(t)}</b><span>al mes</span></button>)}
+            {TOPES.map((t) => <button key={t} className={info.tope === t ? "is-on" : ""} onClick={() => guardarTope(t)}><b>{aColones(t)}</b><span>al mes</span></button>)}
           </div>
           <form className="ad-an-otro" onSubmit={(e) => { e.preventDefault(); guardarTope(Number(topeOtro.replace(/\D/g, ""))); }}>
             <label>Otro monto<input inputMode="numeric" value={topeOtro} onChange={(e) => setTopeOtro(e.target.value)} placeholder="₡" /></label>
@@ -240,7 +243,7 @@ export default function Anuncios({ ferias, arrancar, alArrancar, avisar }: {
           <div className="ad-an-opciones">
             {MONTOS.map((m) => (
               <button key={m} className={porDia === m && !otro ? "is-on" : ""} onClick={() => { setPorDia(m); setOtro(""); }}>
-                <b>{colones(m)}</b><span>{m === 2500 ? "Recomendado" : "por día"}</span>
+                <b>{aColones(m)}</b><span>{m === 2500 ? "Recomendado" : "por día"}</span>
               </button>
             ))}
           </div>
@@ -248,10 +251,10 @@ export default function Anuncios({ ferias, arrancar, alArrancar, avisar }: {
             <input inputMode="numeric" value={otro} placeholder="₡" onChange={(e) => { setOtro(e.target.value); const v = Number(e.target.value.replace(/\D/g, "")); if (v >= 1000 && v <= 20000) setPorDia(v); }} />
           </label>
           <div className="ad-an-cuenta">
-            <p>En {cuando.dias} {cuando.dias === 1 ? "día" : "días"}, Meta cobra como máximo <b>{colones(total)}</b>.</p>
-            <p>Con el 13% de IVA del banco: <b>{colones(conIva(total))}</b>. Nunca más que eso.</p>
+            <p>En {cuando.dias} {cuando.dias === 1 ? "día" : "días"}, Meta cobra como máximo <b>{aColones(total)}</b>.</p>
+            <p>Con el 13% de IVA del banco: <b>{aColones(conIva(total))}</b>. Nunca más que eso.</p>
             {alcance && <p>Le podría llegar a unas <b>{alcance.min.toLocaleString("es-CR")} a {alcance.max.toLocaleString("es-CR")} personas por día</b>.</p>}
-            {!cabe && <p className="ad-an-alerta">Eso pasa tu tope del mes: te quedan {colones(restante)}. Escogé menos por día o <button className="ad-an-link" onClick={() => setVista("tope")}>subí tu tope</button>.</p>}
+            {!cabe && <p className="ad-an-alerta">Eso pasa tu tope del mes: te quedan {aColones(restante)}. Escogé menos por día o <button className="ad-an-link" onClick={() => setVista("tope")}>subí tu tope</button>.</p>}
           </div>
           <button className="btn ad-an-grande" disabled={!cabe} onClick={() => setVista("revisar")}>Seguir</button>
         </>
@@ -265,8 +268,8 @@ export default function Anuncios({ ferias, arrancar, alArrancar, avisar }: {
             <dl>
               <dt>Post</dt><dd>{primeraLinea(post.caption)}</dd>
               <dt>Cuándo</dt><dd>{cuando.detalle}</dd>
-              <dt>Por día</dt><dd>{colones(porDia)}</dd>
-              <dt>Máximo a cobrar</dt><dd><b>{colones(conIva(total))}</b> con IVA</dd>
+              <dt>Por día</dt><dd>{aColones(porDia)}</dd>
+              <dt>Máximo a cobrar</dt><dd><b>{aColones(conIva(total))}</b> con IVA</dd>
               <dt>Quién lo ve</dt><dd>{info.publico}</dd>
               <dt>Qué pasa</dt><dd>Aparece en Instagram con un botón para escribirte un mensaje a eucaliptochicr.</dd>
             </dl>
@@ -288,7 +291,7 @@ export default function Anuncios({ ferias, arrancar, alArrancar, avisar }: {
         <div className="ad-an-modal" role="dialog" aria-modal="true" aria-labelledby="an-conf">
           <div>
             <h2 id="an-conf">Última confirmación</h2>
-            <p>¿Autorizás que se cobren hasta <b>{colones(conIva(total))}</b> (con IVA) a la tarjeta de Eucalipto Chic por esta promoción?</p>
+            <p>¿Autorizás que se cobren hasta <b>{aColones(conIva(total))}</b> (con IVA) a la tarjeta de Eucalipto Chic por esta promoción?</p>
             <button className="btn ad-an-grande" disabled={enviando} onClick={lanzar}>{enviando ? "Creando la promoción…" : "Sí, autorizo"}</button>
             <button className="ad-an-link ad-an-centro" disabled={enviando} onClick={() => setConfirmar(false)}>No</button>
           </div>
