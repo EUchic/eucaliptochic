@@ -120,7 +120,7 @@ export async function crearEnPausa(p: { nombre: string; mediaId: string; inicio:
     })).id;
     const creativo = (await graph<{ id: string }>(`${act}/adcreatives`, "POST", {
       name: p.nombre, object_id: META.pagina, instagram_user_id: META.instagram, source_instagram_media_id: p.mediaId,
-      call_to_action: { type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT" } },
+      call_to_action: { type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT", link: "https://www.instagram.com" } },
     })).id;
     const anuncio = (await graph<{ id: string }>(`${act}/ads`, "POST", {
       name: p.nombre, adset_id: conjunto, status: "PAUSED", creative: { creative_id: creativo },
