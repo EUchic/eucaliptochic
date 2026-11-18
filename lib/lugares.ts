@@ -22,7 +22,9 @@ async function pedir(url: string, ms = 8000) {
 export async function sugerirLugares(q: string): Promise<Lugar[]> {
   const t = corto(q, 120);
   if (t.length < 3) return [];
-  return (await photon(t)).slice(0, 6);
+  // OpenStreetMap a veces trae el mismo lugar varias veces (calle, parada, edificio): queda uno por nombre y zona.
+  const vistos = new Set<string>();
+  return (await photon(t)).filter((l) => { const k = `${l.nombre.toLowerCase()}|${l.direccion.toLowerCase()}`; return vistos.has(k) ? false : (vistos.add(k), true); }).slice(0, 6);
 }
 
 export async function buscarLugares(q: string): Promise<Lugar[]> {

@@ -434,6 +434,7 @@ label.pn-boton { cursor: pointer; }
   .pn-tabs button.is-on .pn-tab-ico { background: none; }
   .pn-tab-ico { width: 40px; }
   .ch-hilo { padding-bottom: 20px; }
+  .ch-tarjeta:not(.is-chica) { max-width: 560px; }
   .ch-escribir { position: sticky; bottom: 0; left: auto; right: auto; padding: 18px 0 20px; }
   .pn-toast { bottom: 110px; }
   .pn-modal { place-items: center; }
