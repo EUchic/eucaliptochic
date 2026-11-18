@@ -13,6 +13,7 @@ import {
 import Icon from "./Icon";
 import PostIG from "./PostIG";
 import { Autorizar, Rejilla } from "./Anuncios";
+import { Escuchando, useVoz } from "./Voz";
 
 export type Mensaje = { id: string; de: "ella" | "asis"; texto: string; tarjeta?: Tarjeta; hecho?: boolean; motor?: string };
 type Props = {
@@ -30,10 +31,7 @@ export default function Chat({ d, piezas, colecciones, tc, enLinea, guardar, irA
   const [msgs, setMsgs] = useState<Mensaje[]>([]);
   const [pendiente, setPendiente] = useState<Pendiente>(null);
   const [pensando, setPensando] = useState(false);
-  const [oyendo, setOyendo] = useState(false);
-  const [oido, setOido] = useState("");
   const [escrito, setEscrito] = useState("");
-  const rec = useRef<any>(null);
   const fin = useRef<HTMLDivElement>(null);
 
   // La conversación se guarda en el teléfono (solo el texto: las tarjetas viejas no se pueden volver a tocar).
@@ -90,25 +88,12 @@ export default function Chat({ d, piezas, colecciones, tc, enLinea, guardar, irA
     decir(r.respuesta, tarjeta, r.motor);
   }, [msgs, pensando, contexto, piezas, d, tc, pendiente, guardar, decir]);
 
-  const escuchar = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { avisar("Este navegador no deja dictar. Usá Chrome o Safari, o escribilo abajo.", true); return; }
-    if (oyendo) { rec.current?.stop(); return; }
-    try { speechSynthesis?.cancel(); } catch {}
-    const r = new SR();
-    rec.current = r;
-    r.lang = "es-CR"; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
-    let final = "";
-    r.onresult = (e: any) => {
-      let t = "";
-      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
-      setOido(t);
-      if (e.results[e.results.length - 1].isFinal) final = t;
-    };
-    r.onerror = (e: any) => { if (e.error === "not-allowed") avisar("Hay que darle permiso al micrófono.", true); };
-    r.onend = () => { setOyendo(false); setOido(""); if (final) procesar(final); };
-    setOido(""); setOyendo(true); r.start();
-  };
+  // Nombres que ayudan a entender bien el audio (piezas, colecciones y ferias de ella).
+  const pistas = useMemo(() => ({
+    nombres: [...colecciones, ...d.ferias.map((f) => f.nombre)],
+    piezas: piezas.map((p) => p.nombre),
+  }), [colecciones, d.ferias, piezas]);
+  const voz = useVoz({ alTexto: procesar, avisar, pistas });
 
   const vacio = msgs.length === 0;
 
@@ -135,20 +120,25 @@ export default function Chat({ d, piezas, colecciones, tc, enLinea, guardar, irA
           </div>
         ))}
         {pensando && <div className="ch-msg is-asis"><p className="ch-burbuja is-asis ch-puntos" aria-label="Pensando"><i /><i /><i /></p></div>}
-        {oido && <div className="ch-msg is-ella"><p className="ch-burbuja is-ella is-oyendo">{oido}</p></div>}
         <div ref={fin} />
       </div>
 
-      <form className="ch-escribir" onSubmit={(e) => { e.preventDefault(); procesar(escrito); setEscrito(""); }}>
-        <input value={escrito} onChange={(e) => setEscrito(e.target.value)} placeholder={oyendo ? "Te escucho…" : "Escribile al asistente"} aria-label="Escribile al asistente" enterKeyHint="send" />
-        {escrito.trim() ? (
-          <button className="ch-enviar" aria-label="Enviar"><Icon n="flecha" s={24} /></button>
+      <div className="ch-pie">
+        {voz.estado === "quieto" ? (
+          <form className="ch-escribir" onSubmit={(e) => { e.preventDefault(); procesar(escrito); setEscrito(""); }}>
+            <input value={escrito} onChange={(e) => setEscrito(e.target.value)} placeholder="Escribile o tocá el micrófono" aria-label="Escribile al asistente" enterKeyHint="send" />
+            {escrito.trim() ? (
+              <button className="ch-enviar" aria-label="Enviar"><Icon n="flecha" s={30} /></button>
+            ) : (
+              <button type="button" className="ch-mic" onClick={voz.empezar} aria-label="Hablarle al asistente">
+                <Icon n="mic" s={36} />
+              </button>
+            )}
+          </form>
         ) : (
-          <button type="button" className={"ch-mic" + (oyendo ? " is-on" : "")} onClick={escuchar} aria-label={oyendo ? "Dejar de escuchar" : "Hablar"}>
-            <span className="ch-onda" /><Icon n="mic" s={26} />
-          </button>
+          <Escuchando voz={voz} />
         )}
-      </form>
+      </div>
     </section>
   );
 }
