@@ -22,7 +22,9 @@ export type Accion =
   | { id: string; tipo: "anular"; mov: string; nombre: string }
   | { id: string; tipo: "quitar_foto"; foto_id: string; slug: string; nombre: string }
   | { id: string; tipo: "feria_lugar"; feria: string; nombre: string; lugar: string; direccion?: string; lat: number; lng: number }
-  | { id: string; tipo: "feria_sin_foto"; feria: string; nombre: string };
+  | { id: string; tipo: "feria_sin_foto"; feria: string; nombre: string }
+  | { id: string; tipo: "borrar_feria"; feria: string; nombre: string }
+  | { id: string; tipo: "aprender"; clave?: string; sentido: Sentido; categoria: string; nueva?: boolean };
 
 export type Pieza = { slug: string; nombre: string; precio: number; tipo: string; coleccion: string; foto: string; fotos: number; oculta?: boolean; lista?: { id: string; url: string }[] };
 export type Mov = Extract<Accion, { tipo: "movimiento" }> & { crc: number; anulado?: boolean; creado: string };
@@ -35,13 +37,18 @@ export type Datos = {
   ferias: Feria[];
   fotos: Record<string, string>; // foto -> slug
   hechas: string[]; // ids de acciones ya aplicadas (idempotencia)
+  categorias: { nombre: string; sentido: Sentido }[]; // categorías que Andrea le enseñó al asistente
+  aprendido: { clave: string; sentido: Sentido; categoria: string }[]; // palabras que ya sabe a qué categoría van
 };
-export const VACIO: Datos = { cambios: {}, nuevas: [], colecciones: [], movs: [], ferias: [], fotos: {}, hechas: [] };
+export const VACIO: Datos = { cambios: {}, nuevas: [], colecciones: [], movs: [], ferias: [], fotos: {}, hechas: [], categorias: [], aprendido: [] };
+
+/** Categorías de un sentido: las de siempre más las que Andrea agregó. */
+export const categoriasDe = (d: Pick<Datos, "categorias">, s: Sentido) => [...CATS[s].filter((c) => c !== "Otro"), ...d.categorias.filter((c) => c.sentido === s).map((c) => c.nombre).filter((c) => !CATS[s].includes(c)), ...(CATS[s].includes("Otro") ? ["Otro"] : [])];
 export type TipoCambio = { compra: number; venta: number; fecha: string } | null;
 
-export const fmt = (n: number) => "₡" + Math.round(n).toLocaleString("es-CR").replace(/[., ]/g, " ");
+export const fmt = (n: number) => (n < 0 ? "−₡" : "₡") + Math.abs(Math.round(n)).toLocaleString("es-CR").replace(/[.,\s]/g, " ");
 export const hoy = () => new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10); // hora de Costa Rica
-const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!]/g, "").trim();
+export const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!]/g, "").trim();
 const uid = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));
 
 /** Descripción corta y clara de una acción, para mostrársela a Andrea antes de guardar. */
@@ -60,6 +67,8 @@ export function describir(a: Accion): string {
     case "quitar_foto": return `Se quita una foto de ${a.nombre}`;
     case "feria_lugar": return `${a.nombre} queda en ${a.lugar}`;
     case "feria_sin_foto": return `Se quita la foto de ${a.nombre}`;
+    case "borrar_feria": return `Se borra ${a.nombre}`;
+    case "aprender": return a.clave ? `«${a.clave}» va en ${a.categoria}` : `Categoría nueva: ${a.categoria}`;
   }
 }
 
@@ -137,7 +146,7 @@ export function buscarPieza(t: string, piezas: Pieza[]): Pieza | null {
   return mejor;
 }
 
-function buscarFeria(t: string, ferias: Feria[]): string | undefined {
+export function buscarFeria(t: string, ferias: Feria[]): string | undefined {
   const n = norm(t);
   const f = ferias.find((x) => norm(x.nombre).split(/\s+/).some((w) => w.length > 3 && !["feria", "de", "del"].includes(w) && n.includes(w)));
   if (f) return f.nombre;
@@ -316,5 +325,11 @@ export function aplicar(d: Datos, a: Accion, tc: TipoCambio): Datos {
     case "quitar_foto": return x; // solo existe con la base conectada
     case "feria_lugar": return { ...x, ferias: x.ferias.map((f) => (f.id === a.feria ? { ...f, lugar: a.lugar, direccion: a.direccion, lat: a.lat, lng: a.lng } : f)) };
     case "feria_sin_foto": return { ...x, ferias: x.ferias.map((f) => (f.id === a.feria ? { ...f, foto: undefined } : f)) };
+    case "borrar_feria": return { ...x, ferias: x.ferias.filter((f) => f.id !== a.feria) };
+    case "aprender": return {
+      ...x,
+      categorias: a.nueva && !x.categorias.some((c) => c.nombre === a.categoria) ? [...x.categorias, { nombre: a.categoria, sentido: a.sentido }] : x.categorias,
+      aprendido: a.clave ? [...x.aprendido.filter((l) => l.clave !== a.clave), { clave: a.clave, sentido: a.sentido, categoria: a.categoria }] : x.aprendido,
+    };
   }
 }

@@ -7,7 +7,7 @@ import { protegido } from "@/lib/sesion";
 import { getCatalog } from "@/lib/tienda";
 import { TIPOS_PIEZA } from "@/lib/validar";
 
-export const metadata: Metadata = { title: "Panel de Andrea", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Panel de Andrea" };
 export const dynamic = "force-dynamic";
 
 const fotos = FOTOS.filter((f) => f.tipo === "prenda" || !f.pieza).map((f) => ({ id: f.id, src: fotoSrc(f.id, 800), alt: f.alt, pieza: f.pieza }));

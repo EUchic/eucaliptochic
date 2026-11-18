@@ -24,6 +24,8 @@ Tienda en línea y sistema de finanzas de Eucalipto Chic (by Andrea Bermúdez).
 | `SUPABASE_SECRET_KEY` | Llave secreta (`sb_secret_…`) de Supabase → Settings → API Keys | El panel no puede guardar |
 | `OPENAI_API_KEY` | Asistente con IA y mejora de fotos | Asistente básico |
 | `ONVO_SECRET_KEY`, `NEXT_PUBLIC_ONVO_PUBLISHABLE_KEY` | Cobro con tarjeta | Pedido por WhatsApp |
+| `ONVO_WEBHOOK_SECRET` | Firma de los avisos de ONVO (`whsec_…`). Con esto, cada pago que entra por ONVO se anota solo en Plata. URL para ONVO: `https://www.eucaliptochic.com/api/onvo/webhook` | Los pagos de ONVO se anotan a mano |
+| `OPENAI_MODEL`, `OPENAI_IMAGE_MODEL` | Opcionales: modelo del asistente (por defecto `gpt-6-luna`) y de la mejora de fotos (por defecto `gpt-image-2.5-sunburst`) | — |
 | `META_ACCESS_TOKEN` | Llave del usuario de sistema de Meta (negocio Eucalipto Chic) para las promociones de Instagram | La pestaña Anuncios dice que falta conectar |
 | `META_APP_SECRET` | Clave secreta de la app "Eucalipto Chic Panel" (firma cada llamada a Meta) | Funciona igual, con un poco menos de protección |
 

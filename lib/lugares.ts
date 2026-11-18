@@ -18,6 +18,13 @@ async function pedir(url: string, ms = 8000) {
   return fetch(url, { headers: { "user-agent": UA, accept: "application/json", "accept-language": "es" }, signal: AbortSignal.timeout(ms), cache: "no-store" });
 }
 
+/** Sugerencias mientras Andrea escribe: solo Photon (hecho para eso), cerca de San José. */
+export async function sugerirLugares(q: string): Promise<Lugar[]> {
+  const t = corto(q, 120);
+  if (t.length < 3) return [];
+  return (await photon(t)).slice(0, 6);
+}
+
 export async function buscarLugares(q: string): Promise<Lugar[]> {
   const t = corto(q, 400);
   const link = t.match(/https?:\/\/[^\s"'<>]+/)?.[0];
@@ -45,7 +52,7 @@ function direccionDe(p: PropsPhoton, nombre: string) {
 
 async function photon(q: string): Promise<Lugar[]> {
   const { oeste, sur, este, norte } = CAJA_CR;
-  const r = await pedir(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=10&bbox=${oeste},${sur},${este},${norte}`);
+  const r = await pedir(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=10&lat=9.93&lon=-84.08&bbox=${oeste},${sur},${este},${norte}`);
   if (!r.ok) throw new Error(`Photon ${r.status}`);
   const j = (await r.json()) as { features?: { geometry?: { coordinates?: [number, number] }; properties?: PropsPhoton }[] };
   return (j.features ?? []).flatMap((f) => {

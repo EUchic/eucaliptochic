@@ -52,6 +52,8 @@ type EstadoCrudo = {
   ferias: { id: string; nombre: string; fecha: string; lugar: string | null; direccion?: string | null; lat?: number | null; lng?: number | null; foto?: string | null }[];
   movs: (Mov & { feria: string | null })[];
   fotos: Record<string, string>;
+  categorias?: Datos["categorias"];
+  aprendido?: Datos["aprendido"];
 };
 
 /** Todo lo que el panel necesita para pintarse, ya en el formato del panel. */
@@ -72,6 +74,8 @@ export async function estadoPanel(): Promise<{ piezas: Pieza[]; colecciones: str
       })),
       movs: e.movs.map((m) => ({ ...m, monto: Number(m.monto), crc: Number(m.crc), feria: m.feria ?? undefined })),
       fotos: e.fotos,
+      categorias: e.categorias ?? [],
+      aprendido: e.aprendido ?? [],
     },
   };
 }
@@ -145,3 +149,10 @@ export const ajustes = {
   guardar: (clave: string, valor: unknown) =>
     rest("ajustes?on_conflict=clave", { metodo: "POST", cuerpo: { clave, valor, actualizado: new Date().toISOString() }, prefer: "resolution=merge-duplicates,return=minimal" }),
 };
+
+/** Categorías que Andrea agregó (para validar lo que llega del panel). */
+export const categoriasPropias = () => rest<{ nombre: string; sentido: "ingreso" | "gasto" }[]>("categorias?select=nombre,sentido").catch(() => []);
+
+/** Guarda un aviso de un proveedor de pagos tal como llegó (si ya estaba, no lo repite). */
+export const guardarEvento = (proveedor: string, evento_id: string, cuerpo: unknown) =>
+  rest<null>("webhook_eventos", { metodo: "POST", cuerpo: { proveedor, evento_id, cuerpo }, prefer: "resolution=ignore-duplicates,return=minimal" });

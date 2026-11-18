@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Accion } from "@/lib/asistente";
-import { ErrorBase, estadoPanel, guardarAccion } from "@/lib/db";
+import { categoriasPropias, ErrorBase, estadoPanel, guardarAccion } from "@/lib/db";
 import { tipoCambioHacienda } from "@/lib/hacienda";
 import { no, permitido, refrescarTienda } from "@/lib/panel";
 import { Invalida, tocaTienda, validar } from "@/lib/validar";
@@ -37,7 +37,12 @@ export async function POST(req: Request) {
 
   let acciones: Accion[];
   try {
-    acciones = lista.map(validar);
+    const crudas = lista as { tipo?: string; categoria?: unknown; sentido?: unknown }[];
+    const categorias = crudas.some((x) => x?.tipo === "movimiento" || x?.tipo === "aprender") ? await categoriasPropias() : [];
+    const enLote = crudas
+      .filter((x) => x?.tipo === "aprender" && (x.sentido === "ingreso" || x.sentido === "gasto"))
+      .map((x) => ({ nombre: String(x.categoria ?? "").replace(/\s+/g, " ").trim().slice(0, 40), sentido: x.sentido as "ingreso" | "gasto" }));
+    acciones = lista.map((x) => validar(x, { categorias, enLote }));
   } catch (e) {
     return no(e instanceof Invalida ? e.message : "No entendí lo que había que guardar.", 400);
   }

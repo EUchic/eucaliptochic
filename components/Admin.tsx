@@ -1,61 +1,47 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CATS, METODOS, VACIO, aplicar, describir, entender, fechaLinda, fmt, hoy, porFeria, respuestaCorta, resumenMes,
-  type Accion, type Datos, type Feria, type Pieza, type Respuesta, type Sentido, type TipoCambio,
+  METODOS, VACIO, aplicar, categoriasDe, fechaLinda, fmt, hoy, resumenMes,
+  type Accion, type Datos, type Feria, type Pieza, type Sentido, type TipoCambio,
 } from "@/lib/asistente";
+import type { Seccion } from "@/lib/cerebro";
 import Icon from "./Icon";
 import Anuncios from "./Anuncios";
+import Chat, { achicarFoto } from "./Chat";
 import FeriasPanel from "./FeriasPanel";
 import { Mark } from "./Logo";
 
 type FotoPanel = { id: string; src: string; alt: string; pieza?: string };
-type Tab = "asistente" | "plata" | "piezas" | "ferias" | "fotos" | "anuncios";
 const KEY = "euchic-panel-v2";
 const nid = () => crypto.randomUUID();
 
-const EJEMPLOS = [
-  "Le pagué 45 mil a Juanita por SINPE",
-  "Vendí 71 mil en la feria, en efectivo",
-  "Compré tela, 32 mil con tarjeta",
-  "Subí la Blusa Jade a 25 mil",
-  "Escondé la Falda Paz, ya se agotó",
-  "¿Cuánto llevo gastado en tela?",
-];
-
 type Props = { piezas: Pieza[]; colecciones: string[]; tipos: string[]; fotos: FotoPanel[]; protegido: boolean; enLinea: boolean; inicial?: Datos; aviso?: string };
-const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "feria_lugar", "feria_sin_foto"].includes(a.tipo);
+const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "feria_lugar", "feria_sin_foto", "borrar_feria"].includes(a.tipo);
+const SECCIONES: [Seccion, string, string][] = [["inicio", "Inicio", "mic"], ["plata", "Plata", "moneda"], ["tienda", "Tienda", "percha"], ["ferias", "Ferias", "carpa"], ["anuncios", "Anuncios", "megafono"]];
 
 export default function Admin({ piezas, colecciones, tipos, fotos, protegido, enLinea, inicial, aviso }: Props) {
-  const [tab, setTab] = useState<Tab>("asistente");
-  const [d, setD] = useState<Datos>(inicial ?? VACIO);
+  const [tab, setTab] = useState<Seccion>("inicio");
+  const [d, setD] = useState<Datos>({ ...VACIO, ...inicial });
   const [base, setBase] = useState(piezas);
   const [cols, setCols] = useState(colecciones);
-  const [guardando, setGuardando] = useState(false);
   const [colNueva, setColNueva] = useState("");
   const [arrancar, setArrancar] = useState(false);
   const [descartadas, setDescartadas] = useState<string[]>([]);
   const [mal, setMal] = useState(false);
   const [listo, setListo] = useState(false);
   const [tc, setTc] = useState<TipoCambio>(null);
-
-  // Asistente
-  const [oyendo, setOyendo] = useState(false);
-  const [oido, setOido] = useState("");
-  const [pensando, setPensando] = useState(false);
-  const [resp, setResp] = useState<(Respuesta & { motor?: string }) | null>(null);
   const [toast, setToast] = useState("");
   const [voz, setVoz] = useState(false);
   const [hayVoz, setHayVoz] = useState(false);
-  const [escrito, setEscrito] = useState("");
-  const rec = useRef<any>(null);
+  const [menu, setMenu] = useState(false);
 
   useEffect(() => {
     if (!enLinea) try { const s = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (s) setD({ ...VACIO, ...s }); } catch {}
     try { setDescartadas(JSON.parse(localStorage.getItem(KEY + "-sug") ?? "[]")); } catch {}
     // La voz viene apagada: solo habla si Andrea la prende, y solo con una voz que suene natural.
     try { setVoz(localStorage.getItem(KEY + "-voz2") === "1"); } catch {}
+    try { const t = localStorage.getItem(KEY + "-tab") as Seccion | null; if (t && SECCIONES.some(([k]) => k === t)) setTab(t); } catch {}
     if (typeof speechSynthesis !== "undefined") {
       const ver = () => setHayVoz(!!vozBuena());
       ver();
@@ -63,156 +49,86 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
     }
     setListo(true);
     fetch("/api/tipo-cambio").then((r) => (r.ok ? r.json() : null)).then((j) => j && setTc(j)).catch(() => {});
-  }, []);
+  }, [enLinea]);
   useEffect(() => { if (listo && !enLinea) try { localStorage.setItem(KEY, JSON.stringify(d)); } catch {} }, [d, listo, enLinea]);
-  useEffect(() => { if (!toast) return; const t = setTimeout(() => { setToast(""); setMal(false); }, mal ? 6000 : 3200); return () => clearTimeout(t); }, [toast, mal]);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => { setToast(""); setMal(false); }, mal ? 6000 : 3000); return () => clearTimeout(t); }, [toast, mal]);
+
+  const irA = useCallback((s: Seccion) => {
+    setTab(s); setMenu(false);
+    try { localStorage.setItem(KEY + "-tab", s); } catch {}
+    window.scrollTo({ top: 0 });
+  }, []);
 
   const todas = useMemo(() => [...d.nuevas, ...base].map((p) => ({ ...p, ...d.cambios[p.slug] })), [base, d]);
   const todasColecciones = useMemo(() => [...new Set([...cols, ...d.colecciones])], [cols, d.colecciones]);
-  const mes = resumenMes(d);
 
   const hablar = useCallback((t: string) => {
     if (!voz || typeof speechSynthesis === "undefined") return;
-    speechSynthesis.cancel();
     const v = vozBuena();
     if (!v) return;
+    speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(t.replace(/₡\s?(\d+(?:\s\d{3})*)/g, (_, n: string) => n.replace(/\D/g, "") + " colones"));
-    u.voice = v;
-    u.lang = v.lang;
-    u.rate = 1;
-    u.pitch = 1;
+    u.voice = v; u.lang = v.lang; u.rate = 1; u.pitch = 1;
     speechSynthesis.speak(u);
   }, [voz]);
+  const avisar = useCallback((m: string, malo?: boolean) => { setMal(!!malo); setToast(m); hablar(m); }, [hablar]);
 
   const tomarEstado = (e?: { piezas: Pieza[]; colecciones: string[]; datos: Datos }) => {
     if (!e) return;
     setBase(e.piezas); setCols(e.colecciones); setD(e.datos);
   };
-  const [subiendo, setSubiendo] = useState("");
 
-  const subirFotos = useCallback(async (p: Pieza, archivos: File[]) => {
-    if (!archivos.length) return;
-    setSubiendo(p.slug);
-    try {
-      for (const f of archivos.slice(0, 8)) {
-        const [grande, chica] = [await achicar(f, 1600), await achicar(f, 800)];
-        const fd = new FormData();
-        fd.set("id", nid()); fd.set("slug", p.slug); fd.set("grande", grande, "grande"); fd.set("chica", chica, "chica");
-        const r = await fetch("/api/fotos", { method: "POST", body: fd });
-        if (r.status === 401) { location.href = "/admin/entrar"; return; }
-        const j = await r.json().catch(() => ({}));
-        tomarEstado(j.estado);
-        if (!r.ok) throw new Error(j.error || "No se pudo subir la foto.");
-      }
-      const m = archivos.length > 1 ? `Fotos subidas a ${p.nombre}. Ya salen en la tienda.` : `Foto subida a ${p.nombre}. Ya sale en la tienda.`;
-      setMal(false); setToast(m); hablar(m);
-    } catch (e) {
-      const m = e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. La foto no se subió.";
-      setMal(true); setToast(m); hablar(m);
-    } finally {
-      setSubiendo("");
-    }
-  }, [hablar]);
-
-  const subirFotoFeria = useCallback(async (f: Feria, archivo: File) => {
-    try {
-      const [grande, chica] = [await achicar(archivo, 1600), await achicar(archivo, 800)];
-      const fd = new FormData();
-      fd.set("id", nid()); fd.set("feria", f.id); fd.set("grande", grande, "grande"); fd.set("chica", chica, "chica");
-      const r = await fetch("/api/fotos", { method: "POST", body: fd });
-      if (r.status === 401) { location.href = "/admin/entrar"; return; }
-      const j = await r.json().catch(() => ({}));
-      tomarEstado(j.estado);
-      if (!r.ok) throw new Error(j.error || "No se pudo subir la foto.");
-      const m = `Foto puesta en ${f.nombre}.`;
-      setMal(false); setToast(m); hablar(m);
-    } catch (e) {
-      const m = e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. La foto no se subió.";
-      setMal(true); setToast(m); hablar(m);
-    }
-  }, [hablar]);
-
-  const guardar = useCallback(async (acciones: Accion[], msg = "Listo, guardado.") => {
+  /** Guarda acciones confirmadas. Devuelve si se guardó. Con msg vacío no muestra aviso (el chat contesta solo). */
+  const guardar = useCallback(async (acciones: Accion[], msg = "Listo, guardado."): Promise<boolean> => {
     if (!enLinea) {
       setD((x) => acciones.reduce((acc, a) => aplicar(acc, a, tc), x));
-      setResp(null); setMal(false); setToast(msg); hablar(msg);
-      return;
+      if (msg) avisar(msg);
+      return true;
     }
-    // Se guarda en la base de datos; la tienda se refresca sola en el servidor.
-    setGuardando(true);
     try {
       const r = await fetch("/api/acciones", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ acciones }) });
-      if (r.status === 401) { location.href = "/admin/entrar"; return; }
+      if (r.status === 401) { location.href = "/admin/entrar"; return false; }
       const j = await r.json().catch(() => ({}));
       tomarEstado(j.estado);
       if (!r.ok) throw new Error(j.error || "No se pudo guardar. Probá de nuevo.");
-      const dicho = msg + (acciones.some(tocaTienda) ? " La tienda ya está al día." : "");
       const col = acciones.find((a) => a.tipo === "coleccion");
       if (col && col.tipo === "coleccion") setColNueva(col.nombre);
-      setResp(null); setMal(false); setToast(dicho); hablar(msg);
+      if (msg) avisar(msg + (acciones.some(tocaTienda) ? " La página ya está al día." : ""));
+      return true;
     } catch (e) {
-      const m = e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. No se guardó; probá de nuevo.";
-      setMal(true); setToast(m); hablar(m);
-    } finally {
-      setGuardando(false);
+      avisar(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. No se guardó; probá de nuevo.", true);
+      return false;
     }
-  }, [tc, hablar, enLinea]);
+  }, [tc, enLinea, avisar]);
 
-  const procesar = useCallback(async (texto: string) => {
-    const t = texto.trim();
-    if (!t) return;
-    // ¿Contestó sí o no a la pregunta anterior?
-    if (resp?.acciones.length) {
-      const c = respuestaCorta(t);
-      if (c === "si") return guardar(resp.acciones);
-      if (c === "no") { setResp(null); setToast("No guardé nada."); hablar("Listo, no guardé nada."); return; }
-    }
-    setPensando(true);
-    let r: (Respuesta & { motor?: string }) | null = null;
+  const subirArchivo = useCallback(async (campos: Record<string, string>, archivo: File) => {
+    const [grande, chica] = [await achicarFoto(archivo, 1600), await achicarFoto(archivo, 800)];
+    const fd = new FormData();
+    fd.set("id", nid()); for (const [k, v] of Object.entries(campos)) fd.set(k, v);
+    fd.set("grande", grande, "grande"); fd.set("chica", chica, "chica");
+    const r = await fetch("/api/fotos", { method: "POST", body: fd });
+    if (r.status === 401) { location.href = "/admin/entrar"; throw new Error("Entrá de nuevo."); }
+    const j = await r.json().catch(() => ({}));
+    tomarEstado(j.estado);
+    if (!r.ok) throw new Error(j.error || "No se pudo subir la foto.");
+  }, []);
+
+  const subirFotos = useCallback(async (p: Pieza, archivos: File[]): Promise<boolean> => {
+    if (!archivos.length) return false;
     try {
-      const res = await fetch("/api/asistente", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          texto: t,
-          contexto: {
-            piezas: todas.map(({ slug, nombre, precio, tipo, coleccion, oculta }) => ({ slug, nombre, precio, tipo, coleccion, oculta })),
-            colecciones: todasColecciones,
-            ferias: d.ferias.map((f) => ({ nombre: f.nombre, fecha: f.fecha })),
-            resumen: `Este mes entraron ${fmt(mes.entro)} y salieron ${fmt(mes.salio)}. Gastos por categoría: ${Object.entries(mes.porCat).map(([k, v]) => `${k} ${fmt(v)}`).join(", ") || "ninguno"}. Por feria: ${d.ferias.map((f) => { const x = porFeria(d, f.nombre); return `${f.nombre} vendió ${fmt(x.vendio)}, gastó ${fmt(x.gasto)}`; }).join("; ") || "ninguna"}.`,
-            tipoCambio: tc,
-          },
-        }),
-      });
-      if (res.ok) r = await res.json();
-    } catch {}
-    if (!r || r.motor === "local" || !r.respuesta) r = { ...entender(t, todas, d, tc), motor: "local" };
-    setPensando(false);
-    setResp(r);
-    hablar(r.respuesta);
-  }, [resp, guardar, hablar, todas, todasColecciones, d, mes, tc]);
+      for (const f of archivos.slice(0, 8)) await subirArchivo({ slug: p.slug }, f);
+      avisar(archivos.length > 1 ? `Fotos subidas a ${p.nombre}. Ya salen en la tienda.` : `Foto subida a ${p.nombre}. Ya sale en la tienda.`);
+      return true;
+    } catch (e) {
+      avisar(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. La foto no se subió.", true);
+      return false;
+    }
+  }, [subirArchivo, avisar]);
 
-  const escuchar = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { setToast("Este navegador no deja dictar. Usá Chrome o Safari, o escribilo abajo."); return; }
-    if (oyendo) { rec.current?.stop(); return; }
-    speechSynthesis?.cancel();
-    const r = new SR();
-    rec.current = r;
-    r.lang = "es-CR"; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
-    let final = "";
-    r.onresult = (e: any) => {
-      let t = "";
-      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
-      setOido(t);
-      if (e.results[e.results.length - 1].isFinal) final = t;
-    };
-    r.onerror = (e: any) => { if (e.error === "not-allowed") setToast("Hay que darle permiso al micrófono."); };
-    r.onend = () => { setOyendo(false); if (final) procesar(final); };
-    setOido(""); setOyendo(true); r.start();
-  };
-
-  const TABS: [Tab, string, string][] = [["asistente", "Hablar", "mic"], ["plata", "Plata", "moneda"], ["piezas", "Piezas", "percha"], ["ferias", "Ferias", "carpa"], ["fotos", "Fotos", "foto"], ...(enLinea ? [["anuncios", "Anuncios", "megafono"] as [Tab, string, string]] : [])];
+  const subirFotoFeria = useCallback(async (f: Feria, archivo: File) => {
+    try { await subirArchivo({ feria: f.id }, archivo); avisar(`Foto puesta en ${f.nombre}.`); }
+    catch (e) { avisar(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. La foto no se subió.", true); }
+  }, [subirArchivo, avisar]);
 
   // Sugerencias para promocionar: colección recién creada, o una feria que viene en 4 a 10 días.
   const feriaCerca = useMemo(() => {
@@ -223,7 +139,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
       .sort((a, b) => a.faltan - b.faltan)[0];
   }, [d.ferias, descartadas]);
   const sugerencia = !enLinea ? null
-    : colNueva ? { clave: "col-" + colNueva, texto: `Creaste la colección ${colNueva}. ¿Querés promocionar un post de la colección nueva?` }
+    : colNueva ? { clave: "col-" + colNueva, texto: `Creaste la colección ${colNueva}. ¿Promocionamos un post de la colección nueva?` }
     : feriaCerca ? { clave: "feria-" + feriaCerca.id, texto: `Faltan ${feriaCerca.faltan} días para ${feriaCerca.nombre}. ¿Promocionamos un post para que más gente llegue?` }
     : null;
   const descartar = (clave: string) => {
@@ -233,235 +149,266 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
     try { localStorage.setItem(KEY + "-sug", JSON.stringify(nuevas.slice(-30))); } catch {}
   };
 
+  const fotosSueltas = fotos.filter((f) => !(d.fotos[f.id] ?? (enLinea ? "" : f.pieza ?? "")));
+
   return (
-    <div className="ad">
-      <aside className="ad-lado">
-        <a href="/" className="ad-logo" aria-label="Ver la tienda"><Mark part="full" /></a>
-        <nav>{TABS.map(([k, t, ic]) => <button key={k} className={tab === k ? "is-on" : ""} onClick={() => setTab(k)} aria-current={tab === k ? "page" : undefined}><Icon n={ic} s={28} /><span>{t}</span></button>)}</nav>
-        <a className="ad-ver" href="/tienda" target="_blank" rel="noopener"><Icon n="ojo" s={24} /><span>Ver la tienda</span></a>
-        {protegido && <button className="ad-ver" onClick={async () => { await fetch("/api/entrar", { method: "DELETE" }); location.href = "/admin/entrar"; }}><Icon n="cerrar" s={24} /><span>Salir</span></button>}
-      </aside>
-
-      <main className="ad-main">
-        <header className="ad-top">
-          <div>
-            <p className="ad-hola">Hola, Andrea</p>
-            <p className="ad-fecha">{fechaLinda(hoy()).replace(/^./, (c) => c.toUpperCase())}</p>
+    <div className={"pn is-" + tab}>
+      <header className="pn-barra">
+        <a href="/" className="pn-logo" aria-label="Ver la tienda"><Mark part="full" /></a>
+        <div className="pn-hola">
+          <p>Hola, Andrea</p>
+          <small>{fechaLinda(hoy()).replace(/^./, (c) => c.toUpperCase())}</small>
+        </div>
+        <button className="pn-menu-btn" aria-label="Más opciones" aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon n={menu ? "cerrar" : "filtro"} s={26} /></button>
+        {menu && (
+          <div className="pn-menu" role="menu">
+            {tc && <p className="pn-dolar"><span>Dólar hoy (Hacienda)</span><b>{fmt(tc.compra)} / {fmt(tc.venta)}</b></p>}
+            {hayVoz && (
+              <label className="pn-interruptor">
+                <input type="checkbox" checked={voz} onChange={(e) => {
+                  const on = e.target.checked;
+                  setVoz(on);
+                  try { localStorage.setItem(KEY + "-voz2", on ? "1" : "0"); } catch {}
+                  if (!on) { speechSynthesis.cancel(); return; }
+                  const v = vozBuena();
+                  if (v) { const u = new SpeechSynthesisUtterance("Listo, así te voy a contestar."); u.voice = v; u.lang = v.lang; speechSynthesis.cancel(); speechSynthesis.speak(u); }
+                }} />
+                <span>Que el asistente me hable en voz alta</span>
+              </label>
+            )}
+            <a className="pn-menu-item" href="/tienda" target="_blank" rel="noopener"><Icon n="ojo" s={22} />Ver la tienda</a>
+            <a className="pn-menu-item" href="/encontranos" target="_blank" rel="noopener"><Icon n="carpa" s={22} />Ver la página de ferias</a>
+            {protegido && <button className="pn-menu-item" onClick={async () => { await fetch("/api/entrar", { method: "DELETE" }); location.href = "/admin/entrar"; }}><Icon n="cerrar" s={22} />Salir</button>}
           </div>
-          {tc && <p className="ad-tc" title={`Tipo de cambio de Hacienda, ${tc.fecha}`}><span>Dólar hoy</span> {fmt(tc.compra)} / {fmt(tc.venta)}</p>}
-        </header>
+        )}
+      </header>
 
-        {!enLinea && <p className="ad-prueba"><b>Modo de prueba.</b> Lo que hagás aquí se guarda solo en este teléfono y todavía no cambia la tienda. Al conectar la base de datos se guarda de verdad y la página se actualiza sola.</p>}
-        {aviso && <p className="ad-prueba is-mal">{aviso}</p>}
+      {!enLinea && <p className="pn-aviso"><b>Modo de prueba.</b> Lo que hagás se guarda solo en este teléfono y todavía no cambia la tienda.</p>}
+      {aviso && <p className="pn-aviso is-mal">{aviso}</p>}
 
-        {tab === "asistente" && (
-          <section className="ad-asis">
-            <button className={"orbe" + (oyendo ? " is-on" : "") + (pensando ? " is-busy" : "")} onClick={escuchar} aria-label={oyendo ? "Dejar de escuchar" : "Hablar con el asistente"}>
-              <span className="orbe-onda" /><span className="orbe-onda" /><span className="orbe-onda" />
-              <Icon n="mic" s={64} />
-            </button>
-            <p className="orbe-txt" aria-live="polite">{oyendo ? "Te escucho…" : pensando ? "Pensando…" : guardando ? "Guardando…" : resp?.acciones.length ? "Decí «sí» o tocá Guardar" : "Tocá y hablame"}</p>
-            {oido && <p className="ad-oido">«{oido}»</p>}
-
-            {sugerencia && !resp && (
-              <div className="ad-sug">
-                <Icon n="megafono" s={30} />
+      <div className="pn-main">
+        {tab === "inicio" && (
+          <>
+            {sugerencia && (
+              <div className="pn-sugerencia">
+                <Icon n="megafono" s={26} />
                 <p>{sugerencia.texto}</p>
-                <div className="ad-sino">
-                  <button className="btn ad-si" onClick={() => { descartar(sugerencia.clave); setArrancar(true); setTab("anuncios"); }}>Sí, vamos</button>
-                  <button className="ad-no" onClick={() => descartar(sugerencia.clave)}>Ahora no</button>
+                <div className="ch-sino">
+                  <button className="pn-boton" onClick={() => { descartar(sugerencia.clave); setArrancar(true); irA("anuncios"); }}>Sí, vamos</button>
+                  <button className="pn-link" onClick={() => descartar(sugerencia.clave)}>Ahora no</button>
                 </div>
               </div>
             )}
-
-            {resp && (
-              <div className="ad-resp" role="status">
-                <p className="ad-resp-txt">{resp.respuesta}</p>
-                {resp.acciones.length > 0 && (
-                  <>
-                    <ul className="ad-acciones-lista">
-                      {resp.acciones.map((a) => <li key={a.id}><Icon n={iconoDe(a)} s={26} />{describir(a)}</li>)}
-                    </ul>
-                    <div className="ad-sino">
-                      <button className="btn ad-si" disabled={guardando} onClick={() => guardar(resp.acciones)}><Icon n="check" s={26} />{guardando ? "Guardando…" : "Sí, guardalo"}</button>
-                      <button className="ad-no" onClick={() => { setResp(null); setToast("No guardé nada."); }}>No</button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            <form className="ad-escribir" onSubmit={(e) => { e.preventDefault(); procesar(escrito); setEscrito(""); }}>
-              <input value={escrito} onChange={(e) => setEscrito(e.target.value)} placeholder="O escribilo aquí" aria-label="Escribile al asistente" />
-              <button className="redondo" aria-label="Enviar" disabled={!escrito.trim()}><Icon n="flecha" s={24} /></button>
-            </form>
-
-            {!resp && (
-              <div className="ad-ejemplos">
-                <p>Podés decir cosas como:</p>
-                <ul>{EJEMPLOS.map((e) => <li key={e}><button onClick={() => procesar(e)}>«{e}»</button></li>)}</ul>
-              </div>
-            )}
-
-            <div className="ad-kpis ad-kpis-mini">
-              <div><span>Entró este mes</span><b>{fmt(mes.entro)}</b></div>
-              <div><span>Salió este mes</span><b>{fmt(mes.salio)}</b></div>
-              <div className="ad-queda"><span>Te queda</span><b>{fmt(mes.queda)}</b></div>
-            </div>
-
-            {hayVoz && (
-              <label className="ad-voz"><input type="checkbox" checked={voz} onChange={(e) => {
-                const on = e.target.checked;
-                setVoz(on);
-                try { localStorage.setItem(KEY + "-voz2", on ? "1" : "0"); } catch {}
-                if (!on) { speechSynthesis.cancel(); return; }
-                const v = vozBuena();
-                if (v) { const u = new SpeechSynthesisUtterance("Listo, así te voy a contestar."); u.voice = v; u.lang = v.lang; speechSynthesis.cancel(); speechSynthesis.speak(u); }
-              }} /> Que el asistente me conteste en voz alta</label>
-            )}
-            {resp?.motor && <p className="ad-motor">{resp.motor === "openai" ? "Asistente con IA" : "Asistente básico (la IA se activa al conectar OpenAI)"}</p>}
-          </section>
+            <Chat
+              d={d} piezas={todas} colecciones={todasColecciones} tc={tc} enLinea={enLinea} clave={KEY + "-chat"}
+              guardar={(a) => guardar(a, "")} irA={irA} hablar={hablar} avisar={avisar}
+              subirFoto={(p, f) => subirFotos(p, [f])}
+            />
+          </>
         )}
-
         {tab === "plata" && <Plata d={d} tc={tc} guardar={guardar} />}
-        {tab === "piezas" && <Piezas todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} enLinea={enLinea} subir={subirFotos} subiendo={subiendo} />}
-        {tab === "ferias" && <FeriasPanel d={d} enLinea={enLinea} guardar={guardar} subirFoto={subirFotoFeria} avisar={(m, malo) => { setMal(!!malo); setToast(m); hablar(m); }} />}
-        {tab === "fotos" && <Fotos fotos={fotos} d={d} piezas={todas} guardar={guardar} enLinea={enLinea} />}
-        {tab === "anuncios" && <Anuncios ferias={d.ferias} arrancar={arrancar} alArrancar={() => setArrancar(false)} avisar={(m, malo) => { setMal(!!malo); setToast(m); hablar(m); }} />}
-      </main>
+        {tab === "tienda" && <Tienda todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} enLinea={enLinea} subir={subirFotos} fotos={fotosSueltas} d={d} />}
+        {tab === "ferias" && <FeriasPanel d={d} enLinea={enLinea} guardar={guardar} subirFoto={subirFotoFeria} avisar={avisar} />}
+        {tab === "anuncios" && (enLinea
+          ? <Anuncios ferias={d.ferias} arrancar={arrancar} alArrancar={() => setArrancar(false)} avisar={avisar} />
+          : <section className="pn-seccion"><header className="pn-cabeza"><h1>Anuncios</h1><p>Las promociones se hacen cuando el panel está conectado a la base.</p></header></section>)}
+      </div>
 
-      {toast && <p className={"ad-toast" + (mal ? " is-mal" : "")} role={mal ? "alert" : "status"}><Icon n={mal ? "cerrar" : "check"} s={24} />{toast}</p>}
+      <nav className="pn-tabs" aria-label="Secciones">
+        {SECCIONES.map(([k, t, ic]) => (
+          <button key={k} className={tab === k ? "is-on" : ""} onClick={() => irA(k)} aria-current={tab === k ? "page" : undefined}>
+            <span className="pn-tab-ico"><Icon n={ic} s={24} /></span><span>{t}</span>
+          </button>
+        ))}
+      </nav>
+
+      {toast && <p className={"pn-toast" + (mal ? " is-mal" : "")} role={mal ? "alert" : "status"}><Icon n={mal ? "cerrar" : "check"} s={22} />{toast}</p>}
     </div>
   );
 }
 
-function iconoDe(a: Accion) {
-  return a.tipo === "movimiento" ? (a.sentido === "ingreso" ? "mas" : "menos") : a.tipo === "feria" ? "carpa" : a.tipo === "foto" ? "foto" : a.tipo === "visible" ? "ojo" : a.tipo === "precio" ? "moneda" : "percha";
-}
+type G = (a: Accion[], msg?: string) => Promise<boolean>;
 
-type G = (a: Accion[], msg?: string) => Promise<void>;
+/** Botón con confirmación en el mismo lugar (sin ventanas emergentes). */
+function Seguro({ texto, pregunta, si, peligro }: { texto: React.ReactNode; pregunta: string; si: () => void; peligro?: boolean }) {
+  const [abierto, setAbierto] = useState(false);
+  if (!abierto) return <button className={"pn-link" + (peligro ? " is-peligro" : "")} onClick={() => setAbierto(true)}>{texto}</button>;
+  return (
+    <span className="pn-seguro">
+      <span>{pregunta}</span>
+      <button className={"pn-boton is-chico" + (peligro ? " is-peligro" : "")} onClick={() => { setAbierto(false); si(); }}>Sí</button>
+      <button className="pn-link" onClick={() => setAbierto(false)}>No</button>
+    </span>
+  );
+}
 
 function Plata({ d, tc, guardar }: { d: Datos; tc: TipoCambio; guardar: G }) {
   const r = resumenMes(d);
   const [f, setF] = useState<{ sentido: Sentido; monto: string; categoria: string; metodo: string; feria: string } | null>(null);
+  const [todos, setTodos] = useState(false);
+  const gastos = categoriasDe(d, "gasto");
+  const movs = todos ? d.movs : d.movs.slice(0, 15);
   return (
-    <section className="ad-card">
-      <h1>Plata de este mes</h1>
-      <div className="ad-kpis">
+    <section className="pn-seccion">
+      <header className="pn-cabeza"><h1>Plata</h1><p>Lo de este mes. También se lo podés decir al asistente: «vendí 60 mil en la feria en efectivo».</p></header>
+      <div className="pl-kpis">
+        <div className="is-queda"><span>Te queda</span><b>{fmt(r.queda)}</b></div>
         <div><span>Entró</span><b>{fmt(r.entro)}</b></div>
         <div><span>Salió</span><b>{fmt(r.salio)}</b></div>
-        <div className="ad-queda"><span>Te queda</span><b>{fmt(r.queda)}</b></div>
       </div>
-      <p className="ad-linea">De lo que entró, unos {fmt(r.iva)} corresponden al IVA (13 % incluido en el precio), si estás inscrita en Hacienda.</p>
+      <p className="pn-nota">De lo que entró, unos {fmt(r.iva)} corresponden al IVA (13 % incluido en el precio), si estás inscrita en Hacienda.</p>
 
-      <div className="ad-dos">
-        <button className="ad-gr ingreso" onClick={() => setF({ sentido: "ingreso", monto: "", categoria: CATS.ingreso[0], metodo: "SINPE", feria: "" })}><Icon n="mas" s={30} />Entró plata</button>
-        <button className="ad-gr gasto" onClick={() => setF({ sentido: "gasto", monto: "", categoria: CATS.gasto[0], metodo: "SINPE", feria: "" })}><Icon n="menos" s={30} />Salió plata</button>
+      <div className="pl-dos">
+        <button className="pl-gr is-ingreso" onClick={() => setF({ sentido: "ingreso", monto: "", categoria: categoriasDe(d, "ingreso")[0], metodo: "SINPE", feria: "" })}><Icon n="mas" s={28} />Entró plata</button>
+        <button className="pl-gr is-gasto" onClick={() => setF({ sentido: "gasto", monto: "", categoria: gastos[0], metodo: "SINPE", feria: "" })}><Icon n="menos" s={28} />Salió plata</button>
       </div>
       {f && (
-        <form className="ad-form" onSubmit={(e) => {
+        <form className="pn-tarjeta pl-form" onSubmit={async (e) => {
           e.preventDefault();
           const monto = Number(f.monto.replace(/\D/g, ""));
           if (!monto) return;
-          guardar([{ id: nid(), tipo: "movimiento", sentido: f.sentido, monto, moneda: "CRC", categoria: f.categoria, metodo: f.metodo, concepto: f.categoria, feria: f.feria || undefined, fecha: hoy() }]);
-          setF(null);
+          if (await guardar([{ id: nid(), tipo: "movimiento", sentido: f.sentido, monto, moneda: "CRC", categoria: f.categoria, metodo: f.metodo, concepto: f.categoria, feria: f.feria || undefined, fecha: hoy() }])) setF(null);
         }}>
-          <label>Monto en colones<input inputMode="numeric" autoFocus value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} placeholder="0" /></label>
-          <Chips titulo="¿De qué fue?" ops={CATS[f.sentido]} v={f.categoria} set={(o) => setF({ ...f, categoria: o })} />
+          <label className="pn-campo is-monto"><span>Monto en colones</span><input inputMode="numeric" autoFocus value={f.monto} onChange={(e) => setF({ ...f, monto: e.target.value })} placeholder="₡0" /></label>
+          <Chips titulo="¿De qué fue?" ops={categoriasDe(d, f.sentido)} v={f.categoria} set={(o) => setF({ ...f, categoria: o })} />
           <Chips titulo="¿Cómo se pagó?" ops={METODOS.filter((m) => m !== "ONVO")} v={f.metodo} set={(o) => setF({ ...f, metodo: o })} />
-          {d.ferias.length > 0 && <Chips titulo="¿Fue en una feria?" ops={["No", ...d.ferias.map((x) => x.nombre)]} v={f.feria || "No"} set={(o) => setF({ ...f, feria: o === "No" ? "" : o })} />}
-          <div className="ad-fin"><button type="button" className="ad-no" onClick={() => setF(null)}>Cancelar</button><button className="btn"><Icon n="check" s={22} />Guardar</button></div>
+          {d.ferias.length > 0 && <Chips titulo="¿Fue en una feria?" ops={["No", ...d.ferias.slice(0, 6).map((x) => x.nombre)]} v={f.feria || "No"} set={(o) => setF({ ...f, feria: o === "No" ? "" : o })} />}
+          <div className="ch-sino"><button className="pn-boton"><Icon n="check" s={22} />Guardar</button><button type="button" className="pn-link" onClick={() => setF(null)}>Cancelar</button></div>
         </form>
       )}
 
-      <h2>En qué se fue</h2>
-      <ul className="ad-barras">
-        {CATS.gasto.map((c) => { const v = r.porCat[c] ?? 0; return <li key={c}><span>{c}</span><i><em style={{ width: (r.salio ? (v / r.salio) * 100 : 0) + "%" }} /></i><b>{fmt(v)}</b></li>; })}
+      <h2 className="pn-sub">En qué se fue</h2>
+      <ul className="pn-tarjeta pl-barras">
+        {gastos.map((c) => { const v = r.porCat[c] ?? 0; return <li key={c}><span>{c}</span><b>{fmt(v)}</b><i><em style={{ width: (r.salio ? (v / r.salio) * 100 : 0) + "%" }} /></i></li>; })}
       </ul>
 
-      <h2>Todos los movimientos</h2>
-      {d.movs.length === 0 ? <p className="ad-linea">Todavía no hay movimientos. Contáselos al asistente o tocá «Entró plata» o «Salió plata».</p> : (
-        <ul className="ad-movs">
-          {d.movs.map((m) => (
-            <li key={m.id} className={m.anulado ? "is-off" : ""}>
-              <span className={"ad-signo " + m.sentido}><Icon n={m.sentido === "ingreso" ? "mas" : "menos"} s={22} /></span>
-              <div><b>{m.concepto}</b><small>{m.categoria} · {m.metodo}{m.feria ? " · " + m.feria : ""} · {fechaLinda(m.fecha)}{m.moneda === "USD" ? ` · $${m.monto}` : ""}</small></div>
-              <strong>{m.sentido === "gasto" ? "−" : "+"}{fmt(m.crc)}</strong>
-              {!m.anulado && <button onClick={() => { if (confirm(`¿Anular «${m.concepto}»? Queda tachado y no cuenta en las sumas.`)) guardar([{ id: nid(), tipo: "anular", mov: m.id, nombre: m.concepto }], "Movimiento anulado."); }}>Anular</button>}
+      <h2 className="pn-sub">Movimientos</h2>
+      {d.movs.length === 0 ? <p className="pn-vacio">Todavía no hay movimientos. Contáselos al asistente o tocá «Entró plata» o «Salió plata».</p> : (
+        <ul className="pl-movs">
+          {movs.map((m) => (
+            <li key={m.id} className={"pn-tarjeta" + (m.anulado ? " is-off" : "")}>
+              <span className={"pl-signo is-" + m.sentido}><Icon n={m.sentido === "ingreso" ? "mas" : "menos"} s={20} /></span>
+              <div className="pl-mov-txt"><b>{m.concepto}</b><small>{m.categoria} · {m.metodo}{m.feria ? " · " + m.feria : ""} · {fechaLinda(m.fecha)}{m.moneda === "USD" ? ` · $${m.monto}` : ""}</small></div>
+              <strong className={"is-" + m.sentido}>{m.sentido === "gasto" ? "−" : "+"}{fmt(m.crc)}</strong>
+              {!m.anulado && <div className="pl-anular"><Seguro texto="Anular" pregunta="¿Anularlo? Queda tachado y no cuenta." peligro si={() => guardar([{ id: nid(), tipo: "anular", mov: m.id, nombre: m.concepto }], "Movimiento anulado.")} /></div>}
             </li>
           ))}
         </ul>
       )}
-      {tc && <p className="ad-linea">Los dólares se pasan a colones con el tipo de cambio de Hacienda del día ({fmt(tc.compra)} compra, {fmt(tc.venta)} venta).</p>}
+      {d.movs.length > 15 && !todos && <button className="pn-link is-centro" onClick={() => setTodos(true)}>Ver todos ({d.movs.length})</button>}
+      {tc && <p className="pn-nota">Los dólares se pasan a colones con el tipo de cambio de Hacienda del día ({fmt(tc.compra)} compra, {fmt(tc.venta)} venta).</p>}
     </section>
   );
 }
 
-function Piezas({ todas, colecciones, tipos, guardar, enLinea, subir, subiendo }: { todas: Pieza[]; colecciones: string[]; tipos: string[]; guardar: G; enLinea: boolean; subir: (p: Pieza, f: File[]) => void; subiendo: string }) {
+function Tienda({ todas, colecciones, tipos, guardar, enLinea, subir, fotos, d }: {
+  todas: Pieza[]; colecciones: string[]; tipos: string[]; guardar: G; enLinea: boolean; subir: (p: Pieza, f: File[]) => Promise<boolean>; fotos: FotoPanel[]; d: Datos;
+}) {
   const [q, setQ] = useState("");
+  const [abierta, setAbierta] = useState<string | null>(null);
+  const [nueva, setNueva] = useState(false);
+  const [subiendo, setSubiendo] = useState("");
   const vista = todas.filter((p) => p.nombre.toLowerCase().includes(q.toLowerCase()));
   return (
-    <section className="ad-card">
-      <h1>Piezas</h1>
-      <p className="ad-linea">También se lo podés pedir al asistente: «subí la Blusa Jade a 25 mil», «escondé la Falda Paz», «creá la colección Navidad».</p>
-      <div className="ad-barra">
-        <label className="ad-busca"><Icon n="buscar" s={22} /><input type="search" placeholder="Buscar una pieza" value={q} onChange={(e) => setQ(e.target.value)} /></label>
-        <button className="btn" onClick={() => { const nombre = prompt("¿Cómo se llama la pieza nueva?")?.trim(); if (nombre) guardar([{ id: nid(), tipo: "pieza", nombre, tipoPieza: tipos[0] ?? "Blusas", precio: 0 }], "Pieza agregada. Sale en la tienda apenas tenga foto."); }}><Icon n="mas" s={22} />Agregar pieza</button>
+    <section className="pn-seccion">
+      <header className="pn-cabeza"><h1>Tienda</h1><p>Tocá una pieza para cambiarle el precio, la colección o las fotos. O pedíselo al asistente: «subí la Blusa Jade a 25 mil».</p></header>
+      <div className="ti-barra">
+        <label className="pn-buscador"><Icon n="buscar" s={22} /><input type="search" placeholder="Buscar una pieza" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+        <button className="pn-boton" onClick={() => setNueva(!nueva)}><Icon n={nueva ? "cerrar" : "mas"} s={22} />{nueva ? "Cerrar" : "Pieza nueva"}</button>
       </div>
-      <ul className="ad-piezas">
+      {nueva && (
+        <form className="pn-tarjeta ti-nueva" onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          const nombre = String(f.get("n") ?? "").trim();
+          if (!nombre) return;
+          const ok = await guardar([{ id: nid(), tipo: "pieza", nombre, tipoPieza: String(f.get("t") || tipos[0] || "Blusas"), precio: Number(String(f.get("p") ?? "").replace(/\D/g, "")) || 0, coleccion: String(f.get("c") || "") || undefined }], "Pieza agregada. Sale en la tienda apenas tenga foto.");
+          if (ok) setNueva(false);
+        }}>
+          <label className="pn-campo"><span>Nombre</span><input name="n" placeholder="Ej.: Blusa Jade" autoFocus /></label>
+          <label className="pn-campo"><span>Tipo</span><select name="t">{tipos.map((t) => <option key={t}>{t}</option>)}</select></label>
+          <label className="pn-campo"><span>Precio</span><input name="p" inputMode="numeric" placeholder="₡" /></label>
+          <label className="pn-campo"><span>Colección</span><select name="c"><option value="">Sin colección</option>{colecciones.map((c) => <option key={c}>{c}</option>)}</select></label>
+          <button className="pn-boton"><Icon n="check" s={22} />Agregar</button>
+        </form>
+      )}
+
+      <ul className="ti-lista">
         {vista.map((p) => (
-          <li key={p.slug} className={p.oculta ? "is-off" : ""}>
-            {p.foto ? <img src={p.foto} alt="" loading="lazy" /> : <span className="ad-sinfoto"><Icon n="foto" s={30} /></span>}
-            <div className="ad-pieza-nombre"><b>{p.nombre}</b><small>{p.tipo}{p.coleccion ? " · " + p.coleccion : ""}</small></div>
-            <div className="ad-pieza-ctrl">
-              <label>Precio ₡<input inputMode="numeric" defaultValue={p.precio || ""} placeholder="Sin precio" onBlur={(e) => { const v = Number(e.target.value.replace(/\D/g, "")); if (v && v !== p.precio) guardar([{ id: nid(), tipo: "precio", slug: p.slug, nombre: p.nombre, precio: v }], "Precio cambiado."); }} /></label>
-              <label>Colección<select value={p.coleccion} onChange={(e) => guardar([{ id: nid(), tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: e.target.value }], "Colección cambiada.")}><option value="">Sin colección</option>{colecciones.map((c) => <option key={c}>{c}</option>)}</select></label>
-              <button className={"ad-ojo" + (p.oculta ? "" : " is-on")} aria-pressed={!p.oculta} onClick={() => guardar([{ id: nid(), tipo: "visible", slug: p.slug, nombre: p.nombre, visible: !!p.oculta }], p.oculta ? "Ya se ve en la tienda." : "Escondida de la tienda.")}><Icon n="ojo" s={24} />{p.oculta ? "Escondida" : "A la vista"}</button>
-            </div>
-            {enLinea && (
-              <div className="ad-tira">
-                {(p.lista ?? []).map((f, i) => (
-                  <figure key={f.id}>
-                    <img src={f.url} alt="" loading="lazy" />
-                    {i === 0 && <figcaption>Portada</figcaption>}
-                    <button aria-label={`Quitar esta foto de ${p.nombre}`} onClick={() => { if (confirm(`¿Quitar esta foto de ${p.nombre}?`)) guardar([{ id: nid(), tipo: "quitar_foto", foto_id: f.id, slug: p.slug, nombre: p.nombre }], "Foto quitada."); }}><Icon n="cerrar" s={18} /></button>
-                  </figure>
-                ))}
-                <label className={"ad-subir" + (subiendo === p.slug ? " is-busy" : "")}>
-                  <input type="file" accept="image/*" multiple disabled={!!subiendo} onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; subir(p, fs); }} />
-                  <Icon n={subiendo === p.slug ? "foto" : "mas"} s={26} />
-                  <span>{subiendo === p.slug ? "Subiendo…" : (p.lista?.length ? "Otra foto" : "Poner foto")}</span>
-                </label>
+          <li key={p.slug} className={"pn-tarjeta" + (p.oculta ? " is-off" : "") + (abierta === p.slug ? " is-abierta" : "")}>
+            <button className="ti-fila" onClick={() => setAbierta(abierta === p.slug ? null : p.slug)} aria-expanded={abierta === p.slug}>
+              {p.foto ? <img src={p.foto} alt="" loading="lazy" /> : <span className="ti-sinfoto"><Icon n="foto" s={24} /></span>}
+              <span className="ti-nombre"><b>{p.nombre}</b><small>{p.coleccion || p.tipo}{p.oculta ? " · Escondida" : ""}</small></span>
+              <span className="ti-precio">{p.precio ? fmt(p.precio) : "Sin precio"}</span>
+            </button>
+            {abierta === p.slug && (
+              <div className="ti-editar">
+                <div className="ti-campos">
+                  <label className="pn-campo"><span>Precio</span><input inputMode="numeric" defaultValue={p.precio || ""} placeholder="₡" onBlur={(e) => { const v = Number(e.target.value.replace(/\D/g, "")); if (v && v !== p.precio) guardar([{ id: nid(), tipo: "precio", slug: p.slug, nombre: p.nombre, precio: v }], "Precio cambiado."); }} /></label>
+                  <label className="pn-campo"><span>Colección</span><select value={p.coleccion} onChange={(e) => guardar([{ id: nid(), tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: e.target.value }], "Colección cambiada.")}><option value="">Sin colección</option>{colecciones.map((c) => <option key={c}>{c}</option>)}</select></label>
+                </div>
+                <button className={"ti-ojo" + (p.oculta ? "" : " is-on")} aria-pressed={!p.oculta} onClick={() => guardar([{ id: nid(), tipo: "visible", slug: p.slug, nombre: p.nombre, visible: !!p.oculta }], p.oculta ? "Ya se ve en la tienda." : "Escondida de la tienda.")}>
+                  <span className="ti-switch" aria-hidden><i /></span>{p.oculta ? "Escondida de la tienda" : "Se ve en la tienda"}
+                </button>
+                {enLinea && (
+                  <div className="ti-fotos">
+                    {(p.lista ?? []).map((f, i) => (
+                      <figure key={f.id}>
+                        <img src={f.url} alt="" loading="lazy" />
+                        {i === 0 && <figcaption>Portada</figcaption>}
+                        <QuitarFoto si={() => guardar([{ id: nid(), tipo: "quitar_foto", foto_id: f.id, slug: p.slug, nombre: p.nombre }], "Foto quitada.")} />
+                      </figure>
+                    ))}
+                    <label className={"ti-subir" + (subiendo === p.slug ? " is-ocupado" : "")}>
+                      <input type="file" accept="image/*" multiple hidden disabled={!!subiendo} onChange={async (e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; setSubiendo(p.slug); await subir(p, fs); setSubiendo(""); }} />
+                      <Icon n={subiendo === p.slug ? "foto" : "mas"} s={24} /><span>{subiendo === p.slug ? "Subiendo…" : p.lista?.length ? "Otra foto" : "Poner foto"}</span>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
           </li>
         ))}
       </ul>
+
+      {fotos.length > 0 && <FotosSueltas fotos={fotos} piezas={todas} guardar={guardar} d={d} />}
     </section>
   );
 }
 
-function Fotos({ fotos, d, piezas, guardar, enLinea }: { fotos: FotoPanel[]; d: Datos; piezas: Pieza[]; guardar: G; enLinea: boolean }) {
-  const de = (f: FotoPanel) => d.fotos[f.id] ?? (enLinea ? "" : f.pieza ?? "");
-  const sin = fotos.filter((f) => !de(f));
+function QuitarFoto({ si }: { si: () => void }) {
+  const [seguro, setSeguro] = useState(false);
+  return seguro
+    ? <span className="ti-quitar-ok"><button onClick={si}>Quitar</button><button onClick={() => setSeguro(false)}>No</button></span>
+    : <button className="ti-quitar" aria-label="Quitar esta foto" onClick={() => setSeguro(true)}><Icon n="cerrar" s={16} /></button>;
+}
+
+function FotosSueltas({ fotos, piezas, guardar }: { fotos: FotoPanel[]; piezas: Pieza[]; guardar: G; d: Datos }) {
   return (
-    <section className="ad-card">
-      <h1>Fotos</h1>
-      <p className="ad-linea">{sin.length ? `Hay ${sin.length} fotos sin pieza. Elegí de cuál pieza es cada una y aparece en la tienda.` : "Todas las fotos tienen su pieza."} La mejora de fotos con IA se activa al conectar OpenAI.</p>
-      <ul className="ad-fotos">
-        {[...sin, ...fotos.filter((f) => de(f))].map((f) => (
-          <li key={f.id} className={de(f) ? "" : "is-sin"}>
+    <>
+      <h2 className="pn-sub">Fotos sin pieza ({fotos.length})</h2>
+      <p className="pn-nota">Escogé de cuál pieza es cada una y aparece en la tienda.</p>
+      <ul className="ti-sueltas">
+        {fotos.map((f) => (
+          <li key={f.id} className="pn-tarjeta">
             <img src={f.src} alt={f.alt} loading="lazy" />
-            <label>{de(f) ? "Es de" : "¿De cuál pieza es?"}
-              <select value={de(f)} onChange={(e) => { const p = piezas.find((x) => x.slug === e.target.value); if (p) guardar([{ id: nid(), tipo: "foto", foto: f.id, slug: p.slug, nombre: p.nombre }], `Foto puesta en ${p.nombre}.`); }}>
-                <option value="">Elegí una pieza</option>
-                {piezas.map((p) => <option key={p.slug} value={p.slug}>{p.nombre}</option>)}
-              </select>
-            </label>
+            <select value="" onChange={(e) => { const p = piezas.find((x) => x.slug === e.target.value); if (p) guardar([{ id: nid(), tipo: "foto", foto: f.id, slug: p.slug, nombre: p.nombre }], `Foto puesta en ${p.nombre}.`); }}>
+              <option value="">¿De cuál pieza es?</option>
+              {piezas.map((p) => <option key={p.slug} value={p.slug}>{p.nombre}</option>)}
+            </select>
           </li>
         ))}
       </ul>
-    </section>
+    </>
+  );
+}
+
+function Chips({ titulo, ops, v, set }: { titulo: string; ops: string[]; v?: string; set: (o: string) => void }) {
+  return (
+    <fieldset className="pn-grupo">
+      <legend>{titulo}</legend>
+      <div className="pn-chips">{ops.map((o) => <button type="button" key={o} className={v === o ? "is-on" : ""} onClick={() => set(o)}>{o}</button>)}</div>
+    </fieldset>
   );
 }
 
@@ -482,35 +429,4 @@ function vozBuena(): SpeechSynthesisVoice | null {
     .filter((x) => x.p >= 2)
     .sort((a, b) => b.p - a.p);
   return ops[0]?.v ?? null;
-}
-
-/** Achica una foto en el teléfono antes de subirla (más rápido y liviano). WebP si se puede; si no, JPEG. */
-async function achicar(archivo: File, lado: number): Promise<Blob> {
-  const url = URL.createObjectURL(archivo);
-  try {
-    const im = new Image();
-    im.src = url;
-    await im.decode();
-    const k = Math.min(1, lado / Math.max(im.naturalWidth, im.naturalHeight));
-    const cv = document.createElement("canvas");
-    cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
-    const cx = cv.getContext("2d")!;
-    cx.imageSmoothingQuality = "high";
-    cx.drawImage(im, 0, 0, cv.width, cv.height);
-    const hacer = (t: string, q: number) => new Promise<Blob | null>((r) => cv.toBlob(r, t, q));
-    let b = await hacer("image/webp", 0.84);
-    if (!b || b.type !== "image/webp") b = await hacer("image/jpeg", 0.86);
-    if (!b) throw new Error("No pude leer esa foto. Probá con otra.");
-    return b;
-  } catch (e) {
-    throw e instanceof Error && e.message.startsWith("No pude") ? e : new Error("No pude leer esa foto. Probá con otra.");
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-function Chips({ titulo, ops, v, set }: { titulo: string; ops: string[]; v?: string; set: (o: string) => void }) {
-  return (
-    <div><span className="ad-l">{titulo}</span><div className="ad-chips">{ops.map((o) => <button key={o} type="button" className={v === o ? "is-on" : ""} onClick={() => set(o)}>{o}</button>)}</div></div>
-  );
 }

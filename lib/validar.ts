@@ -51,7 +51,10 @@ const de = <T extends string>(v: unknown, lista: readonly T[], nombre: string) =
   return v as T;
 };
 
-export function validar(x: unknown): Accion {
+/** categorias: las que Andrea ya agregó; enLote: las que se crean en este mismo envío (con "aprender"). */
+type Extra = { categorias?: { nombre: string; sentido: Sentido }[]; enLote?: { nombre: string; sentido: Sentido }[] };
+
+export function validar(x: unknown, extra: Extra = {}): Accion {
   if (!x || typeof x !== "object") throw new Invalida("Acción vacía.");
   const a = x as Record<string, unknown>;
   const id = idSeguro(a.id);
@@ -62,7 +65,7 @@ export function validar(x: unknown): Accion {
       return {
         id, tipo: "movimiento", sentido, moneda,
         monto: numero(a.monto, 1, moneda === "USD" ? 100_000 : 50_000_000, "monto"),
-        categoria: de(a.categoria, CATS[sentido], "la categoría"),
+        categoria: de(a.categoria, [...CATS[sentido], ...[...(extra.categorias ?? []), ...(extra.enLote ?? [])].filter((c) => c.sentido === sentido).map((c) => c.nombre)], "la categoría"),
         metodo: de(a.metodo, METODOS, "el método de pago"),
         concepto: texto(a.concepto, 300, "el detalle", true) || String(a.categoria),
         feria: texto(a.feria, 80, "la feria", true) || undefined,
@@ -109,9 +112,22 @@ export function validar(x: unknown): Accion {
       if (!UUID.test(feria)) throw new Invalida("No encontré esa feria.");
       return { id, tipo: "feria_sin_foto", feria, nombre: texto(a.nombre, 80, "el nombre de la feria") };
     }
+    case "borrar_feria": {
+      const feria = String(a.feria ?? "");
+      if (!UUID.test(feria)) throw new Invalida("No encontré esa feria.");
+      return { id, tipo: "borrar_feria", feria, nombre: texto(a.nombre, 80, "el nombre de la feria") };
+    }
+    case "aprender": {
+      const sentido = de(a.sentido, ["ingreso", "gasto"] as Sentido[], "si entró o salió plata");
+      const categoria = texto(a.categoria, 40, "la categoría");
+      if (categoria.length < 2) throw new Invalida("Ese nombre es muy corto.");
+      const clave = texto(a.clave, 60, "la palabra", true).toLowerCase();
+      const conocida = CATS[sentido].includes(categoria) || (extra.categorias ?? []).some((c) => c.nombre === categoria);
+      return { id, tipo: "aprender", sentido, categoria, clave: clave.length >= 2 ? clave : undefined, nueva: !conocida };
+    }
     default: throw new Invalida("No reconozco esa acción.");
   }
 }
 
 /** Acciones que cambian lo que se ve en la tienda (para refrescar la página). */
-export const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "quitar_foto", "feria", "feria_lugar", "feria_sin_foto"].includes(a.tipo);
+export const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "quitar_foto", "feria", "feria_lugar", "feria_sin_foto", "borrar_feria"].includes(a.tipo);
