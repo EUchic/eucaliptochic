@@ -26,7 +26,7 @@ export const PUBLICO = {
   genders: [2],
   targeting_automation: { advantage_audience: 1 },
   publisher_platforms: ["instagram"],
-  instagram_positions: ["stream", "story", "explore", "reels"],
+  instagram_positions: ["stream", "story", "reels"],
 };
 export const PUBLICO_TEXTO = "Mujeres de 25 a 60 años en Costa Rica. Meta además busca sola a quienes tienen más chance de escribirte.";
 
