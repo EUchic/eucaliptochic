@@ -79,7 +79,10 @@ export async function postsRecientes(): Promise<Post[]> {
     .slice(0, 18);
 }
 
-/** Cuánta gente le podría llegar por día con ese monto (estimación de Meta). Si Meta no la da, null. */
+/**
+ * Cuánta gente le podría llegar por día con ese monto (estimación de Meta). Si Meta no la da, null y el panel
+ * simplemente no muestra esa línea. (Nov 2026: Meta solo devuelve el tamaño del público, sin curva por monto.)
+ */
 export async function alcanceEstimado(porDia: number): Promise<{ min: number; max: number } | null> {
   try {
     const j = await graph<{ data: { daily_outcomes_curve?: { spend: number; reach: number }[] }[] }>(
@@ -163,9 +166,7 @@ export async function diagnostico() {
       { optimization_goal: "CONVERSATIONS", targeting_spec: PUBLICO, promoted_object: { page_id: META.pagina } },
     );
     const curva = j.data?.[0]?.daily_outcomes_curve ?? [];
-    out.estimacion = { puntos: curva.length, primeros: curva.slice(0, 5).map((c) => ({ spend: c.spend, reach: c.reach })), dau: j.data?.[0]?.estimate_dau, crudo: JSON.stringify(j).slice(0, 700) };
-    const k = await graph<unknown>(`act_${META.cuenta}/delivery_estimate`, "GET", { optimization_goal: "REACH", targeting_spec: PUBLICO });
-    out.estimacionAlcance = JSON.stringify(k).slice(0, 700);
+    out.estimacion = { puntos: curva.length, primeros: curva.slice(0, 5).map((c) => ({ spend: c.spend, reach: c.reach })), dau: j.data?.[0]?.estimate_dau };
   } catch (e) {
     out.estimacion = { error: e instanceof Error ? e.message : String(e) };
   }
