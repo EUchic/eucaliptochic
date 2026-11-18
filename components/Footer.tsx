@@ -22,6 +22,7 @@ export default function Footer() {
           <b>La marca</b>
           <Link href="/andrea">Andrea</Link>
           <Link href="/encontranos">Ferias y contacto</Link>
+          <Link href="/privacidad">Privacidad</Link>
         </nav>
         <div className="pie-red">
           <a href="https://wa.me/50670171232" target="_blank" rel="noopener noreferrer"><Icon n="chat" /> 7017 1232</a>

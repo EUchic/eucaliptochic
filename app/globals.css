@@ -805,3 +805,9 @@ body:has(.ad) .intro, body:has(.ad-entrar) .intro { display: none; }
   .ad-an-parar { grid-column: 1 / -1; }
   .ad-lado nav button { padding: 8px 6px; font-size: 0.78rem; }
 }
+
+/* Privacidad */
+.priv-texto { max-width: 68ch; padding-block: 8px 96px; font-size: 1.15rem; line-height: 1.7; }
+.priv-texto h2 { font: 400 1.8rem/1.15 var(--serif); margin: 48px 0 12px; color: var(--bosque); }
+.priv-texto p { margin: 0 0 14px; }
+.priv-texto a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
