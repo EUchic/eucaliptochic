@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CATS, METODOS, VACIO, aplicar, describir, entender, fechaLinda, fmt, hoy, porFeria, respuestaCorta, resumenMes,
-  type Accion, type Datos, type Pieza, type Respuesta, type Sentido, type TipoCambio,
+  type Accion, type Datos, type Feria, type Pieza, type Respuesta, type Sentido, type TipoCambio,
 } from "@/lib/asistente";
 import Icon from "./Icon";
 import Anuncios from "./Anuncios";
+import FeriasPanel from "./FeriasPanel";
 import { Mark } from "./Logo";
 
 type FotoPanel = { id: string; src: string; alt: string; pieza?: string };
@@ -24,7 +25,7 @@ const EJEMPLOS = [
 ];
 
 type Props = { piezas: Pieza[]; colecciones: string[]; tipos: string[]; fotos: FotoPanel[]; protegido: boolean; enLinea: boolean; inicial?: Datos; aviso?: string };
-const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion"].includes(a.tipo);
+const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "feria_lugar", "feria_sin_foto"].includes(a.tipo);
 
 export default function Admin({ piezas, colecciones, tipos, fotos, protegido, enLinea, inicial, aviso }: Props) {
   const [tab, setTab] = useState<Tab>("asistente");
@@ -45,14 +46,21 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
   const [pensando, setPensando] = useState(false);
   const [resp, setResp] = useState<(Respuesta & { motor?: string }) | null>(null);
   const [toast, setToast] = useState("");
-  const [voz, setVoz] = useState(true);
+  const [voz, setVoz] = useState(false);
+  const [hayVoz, setHayVoz] = useState(false);
   const [escrito, setEscrito] = useState("");
   const rec = useRef<any>(null);
 
   useEffect(() => {
     if (!enLinea) try { const s = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (s) setD({ ...VACIO, ...s }); } catch {}
     try { setDescartadas(JSON.parse(localStorage.getItem(KEY + "-sug") ?? "[]")); } catch {}
-    try { setVoz(localStorage.getItem(KEY + "-voz") !== "0"); } catch {}
+    // La voz viene apagada: solo habla si Andrea la prende, y solo con una voz que suene natural.
+    try { setVoz(localStorage.getItem(KEY + "-voz2") === "1"); } catch {}
+    if (typeof speechSynthesis !== "undefined") {
+      const ver = () => setHayVoz(!!vozBuena());
+      ver();
+      speechSynthesis.addEventListener?.("voiceschanged", ver);
+    }
     setListo(true);
     fetch("/api/tipo-cambio").then((r) => (r.ok ? r.json() : null)).then((j) => j && setTc(j)).catch(() => {});
   }, []);
@@ -66,11 +74,13 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
   const hablar = useCallback((t: string) => {
     if (!voz || typeof speechSynthesis === "undefined") return;
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(t.replace(/₡/g, "").replace(/(\d) (\d{3})/g, "$1$2") + (/₡/.test(t) ? "" : ""));
-    const v = speechSynthesis.getVoices().filter((x) => x.lang.startsWith("es"));
-    u.voice = v.find((x) => /CR|MX|US|419/.test(x.lang)) ?? v[0] ?? null;
-    u.lang = u.voice?.lang ?? "es-CR";
-    u.rate = 1.02;
+    const v = vozBuena();
+    if (!v) return;
+    const u = new SpeechSynthesisUtterance(t.replace(/₡\s?(\d+(?:\s\d{3})*)/g, (_, n: string) => n.replace(/\D/g, "") + " colones"));
+    u.voice = v;
+    u.lang = v.lang;
+    u.rate = 1;
+    u.pitch = 1;
     speechSynthesis.speak(u);
   }, [voz]);
 
@@ -101,6 +111,24 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
       setMal(true); setToast(m); hablar(m);
     } finally {
       setSubiendo("");
+    }
+  }, [hablar]);
+
+  const subirFotoFeria = useCallback(async (f: Feria, archivo: File) => {
+    try {
+      const [grande, chica] = [await achicar(archivo, 1600), await achicar(archivo, 800)];
+      const fd = new FormData();
+      fd.set("id", nid()); fd.set("feria", f.id); fd.set("grande", grande, "grande"); fd.set("chica", chica, "chica");
+      const r = await fetch("/api/fotos", { method: "POST", body: fd });
+      if (r.status === 401) { location.href = "/admin/entrar"; return; }
+      const j = await r.json().catch(() => ({}));
+      tomarEstado(j.estado);
+      if (!r.ok) throw new Error(j.error || "No se pudo subir la foto.");
+      const m = `Foto puesta en ${f.nombre}.`;
+      setMal(false); setToast(m); hablar(m);
+    } catch (e) {
+      const m = e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. La foto no se subió.";
+      setMal(true); setToast(m); hablar(m);
     }
   }, [hablar]);
 
@@ -281,14 +309,23 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
               <div className="ad-queda"><span>Te queda</span><b>{fmt(mes.queda)}</b></div>
             </div>
 
-            <label className="ad-voz"><input type="checkbox" checked={voz} onChange={(e) => { setVoz(e.target.checked); try { localStorage.setItem(KEY + "-voz", e.target.checked ? "1" : "0"); } catch {} }} /> Que el asistente me conteste en voz alta</label>
+            {hayVoz && (
+              <label className="ad-voz"><input type="checkbox" checked={voz} onChange={(e) => {
+                const on = e.target.checked;
+                setVoz(on);
+                try { localStorage.setItem(KEY + "-voz2", on ? "1" : "0"); } catch {}
+                if (!on) { speechSynthesis.cancel(); return; }
+                const v = vozBuena();
+                if (v) { const u = new SpeechSynthesisUtterance("Listo, así te voy a contestar."); u.voice = v; u.lang = v.lang; speechSynthesis.cancel(); speechSynthesis.speak(u); }
+              }} /> Que el asistente me conteste en voz alta</label>
+            )}
             {resp?.motor && <p className="ad-motor">{resp.motor === "openai" ? "Asistente con IA" : "Asistente básico (la IA se activa al conectar OpenAI)"}</p>}
           </section>
         )}
 
         {tab === "plata" && <Plata d={d} tc={tc} guardar={guardar} />}
         {tab === "piezas" && <Piezas todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} enLinea={enLinea} subir={subirFotos} subiendo={subiendo} />}
-        {tab === "ferias" && <Ferias d={d} guardar={guardar} />}
+        {tab === "ferias" && <FeriasPanel d={d} enLinea={enLinea} guardar={guardar} subirFoto={subirFotoFeria} avisar={(m, malo) => { setMal(!!malo); setToast(m); hablar(m); }} />}
         {tab === "fotos" && <Fotos fotos={fotos} d={d} piezas={todas} guardar={guardar} enLinea={enLinea} />}
         {tab === "anuncios" && <Anuncios ferias={d.ferias} arrancar={arrancar} alArrancar={() => setArrancar(false)} avisar={(m, malo) => { setMal(!!malo); setToast(m); hablar(m); }} />}
       </main>
@@ -404,34 +441,6 @@ function Piezas({ todas, colecciones, tipos, guardar, enLinea, subir, subiendo }
   );
 }
 
-function Ferias({ d, guardar }: { d: Datos; guardar: G }) {
-  return (
-    <section className="ad-card">
-      <h1>Ferias</h1>
-      <p className="ad-linea">Decile al asistente «voy a la feria de Escazú el sábado» y después «vendí 60 mil en la feria»: aquí ves cuánto te dejó cada una.</p>
-      <form className="ad-barra" onSubmit={(e) => {
-        e.preventDefault();
-        const f = new FormData(e.currentTarget);
-        const nombre = String(f.get("n") ?? "").trim();
-        if (!nombre) return;
-        guardar([{ id: nid(), tipo: "feria", nombre, fecha: String(f.get("f") || hoy()) }], "Feria anotada.");
-        e.currentTarget.reset();
-      }}>
-        <label className="ad-busca"><Icon n="carpa" s={22} /><input name="n" placeholder="Nombre de la feria" /></label>
-        <input className="ad-fecha" type="date" name="f" defaultValue={hoy()} aria-label="Fecha" />
-        <button className="btn"><Icon n="mas" s={22} />Agregar feria</button>
-      </form>
-      {d.ferias.length === 0 ? <p className="ad-linea">Todavía no hay ferias anotadas.</p> : (
-        <ul className="ad-ferias">
-          {[...d.ferias].sort((a, b) => b.fecha.localeCompare(a.fecha)).map((f) => { const x = porFeria(d, f.nombre); return (
-            <li key={f.id}><div><b>{f.nombre}</b><small>{fechaLinda(f.fecha)}</small></div><p><span>Vendió</span>{fmt(x.vendio)}</p><p><span>Gastó</span>{fmt(x.gasto)}</p><p className="ad-queda"><span>Dejó</span>{fmt(x.dejo)}</p></li>
-          ); })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 function Fotos({ fotos, d, piezas, guardar, enLinea }: { fotos: FotoPanel[]; d: Datos; piezas: Pieza[]; guardar: G; enLinea: boolean }) {
   const de = (f: FotoPanel) => d.fotos[f.id] ?? (enLinea ? "" : f.pieza ?? "");
   const sin = fotos.filter((f) => !de(f));
@@ -454,6 +463,25 @@ function Fotos({ fotos, d, piezas, guardar, enLinea }: { fotos: FotoPanel[]; d: 
       </ul>
     </section>
   );
+}
+
+// Voces del sistema que suenan raras (las "de juguete" de Apple y similares): nunca se usan.
+const VOCES_RARAS = /\b(eddy|flo|grandma|grandpa|abuel[oa]|reed|rocko|sandy|shelley|bad news|bahh|bells|boing|bubbles|cellos|wobble|good news|jester|organ|superstar|trinoids|whisper|zarvox|albert|fred|junior|kathy|ralph)\b/i;
+
+/** La voz en español que mejor suena en este aparato, o null si solo hay voces robóticas. */
+function vozBuena(): SpeechSynthesisVoice | null {
+  if (typeof speechSynthesis === "undefined") return null;
+  const puntos = (v: SpeechSynthesisVoice) =>
+    (/natural|neural|online|premium|enhanced|mejorada|siri/i.test(v.name) ? 4 : 0) +
+    (/google/i.test(v.name) ? 3 : 0) +
+    (/paulina|m[oó]nica|sabina|dalia|elvira|helena|laura|marisol|lupe|penélope|ximena|camila|jorge|diego|juan/i.test(v.name) ? 2 : 0) +
+    (/-(CR|MX|US|419|CO)\b/i.test(v.lang) ? 1 : 0);
+  const ops = speechSynthesis.getVoices()
+    .filter((v) => /^es\b|^es-/i.test(v.lang) && !VOCES_RARAS.test(v.name))
+    .map((v) => ({ v, p: puntos(v) }))
+    .filter((x) => x.p >= 2)
+    .sort((a, b) => b.p - a.p);
+  return ops[0]?.v ?? null;
 }
 
 /** Achica una foto en el teléfono antes de subirla (más rápido y liviano). WebP si se puede; si no, JPEG. */

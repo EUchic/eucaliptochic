@@ -3,7 +3,8 @@ import { ErrorBase, estadoPanel, guardarAccion, subirFoto } from "@/lib/db";
 import { no, permitido, refrescarTienda } from "@/lib/panel";
 
 // Andrea sube una foto desde el teléfono. El navegador ya la achicó a dos tamaños (800 y 1600 px).
-// Aquí se revisa que de verdad sea una imagen, se sube a Supabase Storage y queda de primera en la pieza.
+// Aquí se revisa que de verdad sea una imagen, se sube a Supabase Storage y queda de primera en la pieza,
+// o como la foto (afiche) de una feria si llega el campo "feria".
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +28,11 @@ export async function POST(req: Request) {
   try { form = await req.formData(); } catch { return no("No llegó la foto.", 400); }
   const id = String(form.get("id") ?? "").toLowerCase();
   const slug = String(form.get("slug") ?? "");
+  const feria = String(form.get("feria") ?? "").toLowerCase();
   const grande = form.get("grande");
   const chica = form.get("chica");
-  if (!UUID.test(id) || !SLUG.test(slug) || slug.length > 140) return no("No encontré esa pieza.", 400);
+  if (!UUID.test(id)) return no("No llegó la foto.", 400);
+  if (feria ? !UUID.test(feria) : !SLUG.test(slug) || slug.length > 140) return no(feria ? "No encontré esa feria." : "No encontré esa pieza.", 400);
   if (!(grande instanceof Blob) || !(chica instanceof Blob)) return no("No llegó la foto.", 400);
   if (grande.size > MAX || chica.size > MAX || !grande.size || !chica.size) return no("La foto es muy pesada.", 413);
 
@@ -39,12 +42,14 @@ export async function POST(req: Request) {
   const mime = ext === "webp" ? "image/webp" : "image/jpeg";
 
   try {
-    const url = await subirFoto(`${slug}/${id}-1600.${ext}`, g, mime);
-    await subirFoto(`${slug}/${id}-800.${ext}`, c, mime);
-    await guardarAccion({ id, tipo: "foto_nueva", slug, url });
+    const carpeta = feria ? `ferias/${feria}` : slug;
+    const url = await subirFoto(`${carpeta}/${id}-1600.${ext}`, g, mime);
+    await subirFoto(`${carpeta}/${id}-800.${ext}`, c, mime);
+    await guardarAccion(feria ? { id, tipo: "feria_foto", feria, url } : { id, tipo: "foto_nueva", slug, url });
   } catch (e) {
     console.error("[fotos]", (e as Error).message);
-    return no(e instanceof ErrorBase && /No encontré/.test(e.message) ? "No encontré esa pieza." : "No se pudo subir la foto. Probá de nuevo.", 502);
+    const falta = e instanceof ErrorBase && /No encontré/.test(e.message);
+    return no(falta ? (feria ? "No encontré esa feria." : "No encontré esa pieza.") : "No se pudo subir la foto. Probá de nuevo.", 502);
   }
   refrescarTienda();
   try {

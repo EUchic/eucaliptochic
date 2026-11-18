@@ -42,10 +42,14 @@ export type FilaCatalogo = {
 };
 export const catalogoBase = () => rpc<FilaCatalogo[]>("catalogo_publico", {}, { next: { revalidate: 300, tags: ["catalogo"] } });
 
+/** Próximas ferias para la página (máximo 6). Se cachea con la etiqueta "ferias". */
+export type FeriaPublica = { nombre: string; fecha: string; lugar: string | null; direccion: string | null; lat: number | null; lng: number | null; foto: string | null };
+export const feriasPublicas = () => rpc<FeriaPublica[]>("ferias_publicas", {}, { next: { revalidate: 300, tags: ["ferias"] } });
+
 type EstadoCrudo = {
   piezas: (Pieza & { foto: string | null; lista?: { id: string; url: string }[] })[];
   colecciones: string[];
-  ferias: Feria[];
+  ferias: { id: string; nombre: string; fecha: string; lugar: string | null; direccion?: string | null; lat?: number | null; lng?: number | null; foto?: string | null }[];
   movs: (Mov & { feria: string | null })[];
   fotos: Record<string, string>;
 };
@@ -62,7 +66,10 @@ export async function estadoPanel(): Promise<{ piezas: Pieza[]; colecciones: str
     datos: {
       ...VACIO,
       colecciones: e.colecciones,
-      ferias: e.ferias.map((f) => ({ ...f, lugar: f.lugar ?? undefined })),
+      ferias: e.ferias.map((f) => ({
+        id: f.id, nombre: f.nombre, fecha: f.fecha, lugar: f.lugar ?? undefined, direccion: f.direccion ?? undefined,
+        lat: f.lat ?? undefined, lng: f.lng ?? undefined, foto: f.foto ? img(f.foto, 800) : undefined,
+      })),
       movs: e.movs.map((m) => ({ ...m, monto: Number(m.monto), crc: Number(m.crc), feria: m.feria ?? undefined })),
       fotos: e.fotos,
     },
@@ -70,7 +77,9 @@ export async function estadoPanel(): Promise<{ piezas: Pieza[]; colecciones: str
 }
 
 /** Guarda una acción ya validada. La base ignora la misma acción si llega dos veces (mismo id). */
-export const guardarAccion = (a: (Accion & { crc?: number; tipoCambio?: number }) | { id: string; tipo: "foto_nueva"; slug: string; url: string }) =>
+export const guardarAccion = (
+  a: (Accion & { crc?: number; tipoCambio?: number }) | { id: string; tipo: "foto_nueva"; slug: string; url: string } | { id: string; tipo: "feria_foto"; feria: string; url: string },
+) =>
   rpc<{ ok: boolean; repetida?: boolean }>("aplicar_accion", { a }, { secreta: true });
 
 /** Sube una foto al bucket público "fotos" y devuelve su URL pública. Si ya existe (reintento), la reutiliza. */

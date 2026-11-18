@@ -41,6 +41,11 @@ const fecha = (v: unknown) => {
   if (d.getUTCFullYear() < 2020 || +d > Date.now() + 400 * 864e5) throw new Invalida("La fecha no se ve bien.");
   return s;
 };
+const coordenada = (v: unknown, lim: number) => {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || Math.abs(n) > lim) throw new Invalida("La ubicación no se ve bien.");
+  return Math.round(n * 1e6) / 1e6;
+};
 const de = <T extends string>(v: unknown, lista: readonly T[], nombre: string) => {
   if (!lista.includes(v as T)) throw new Invalida(`No reconozco ${nombre}.`);
   return v as T;
@@ -90,9 +95,23 @@ export function validar(x: unknown): Accion {
       if (!UUID.test(foto_id)) throw new Invalida("No encontré esa foto.");
       return { id, tipo: "quitar_foto", foto_id, slug: slug(a.slug), nombre: texto(a.nombre, 80, "el nombre") };
     }
+    case "feria_lugar": {
+      const feria = String(a.feria ?? "");
+      if (!UUID.test(feria)) throw new Invalida("No encontré esa feria.");
+      return {
+        id, tipo: "feria_lugar", feria, nombre: texto(a.nombre, 80, "el nombre de la feria"),
+        lugar: texto(a.lugar, 120, "el lugar"), direccion: texto(a.direccion, 200, "la dirección", true) || undefined,
+        lat: coordenada(a.lat, 90), lng: coordenada(a.lng, 180),
+      };
+    }
+    case "feria_sin_foto": {
+      const feria = String(a.feria ?? "");
+      if (!UUID.test(feria)) throw new Invalida("No encontré esa feria.");
+      return { id, tipo: "feria_sin_foto", feria, nombre: texto(a.nombre, 80, "el nombre de la feria") };
+    }
     default: throw new Invalida("No reconozco esa acción.");
   }
 }
 
 /** Acciones que cambian lo que se ve en la tienda (para refrescar la página). */
-export const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "quitar_foto"].includes(a.tipo);
+export const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "quitar_foto", "feria", "feria_lugar", "feria_sin_foto"].includes(a.tipo);

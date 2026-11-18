@@ -11,11 +11,13 @@ import Rail from "@/components/Rail";
 import Reveal, { Words } from "@/components/Reveal";
 import { colones, facets, img, srcSet, WHATSAPP } from "@/lib/catalog";
 import { getCatalog } from "@/lib/tienda";
+import { feriasPublicas } from "@/lib/db";
+import { cuandoFeria, fechaFeria } from "@/lib/ferias";
 
 export const revalidate = 900;
 
 export default async function Home() {
-  const cat = await getCatalog();
+  const [cat, prox] = await Promise.all([getCatalog(), feriasPublicas().then((f) => f[0]).catch(() => undefined)]);
   if (!cat.length) {
     return (
       <section className="wrap vacio pag">
@@ -118,7 +120,12 @@ export default async function Home() {
       <section className="ferias-b wrap">
         <Reveal kind="up"><Icon n="pin" size={44} /></Reveal>
         <Reveal kind="words" as="h2" className="titulo"><Words text="También nos encontrás en ferias" /></Reveal>
-        <Reveal kind="up" delay={200}><Link className="btn" href="/encontranos">Ferias y contacto <Icon n="flecha" size={20} /></Link></Reveal>
+        {prox && (
+          <Reveal kind="up" delay={150} as="p" className="ferias-b-prox">
+            {cuandoFeria(prox.fecha) || fechaFeria(prox.fecha)}: <b>{prox.nombre}</b>{prox.lugar ? `, ${prox.lugar}` : ""}
+          </Reveal>
+        )}
+        <Reveal kind="up" delay={200}><Link className="btn" href="/encontranos">{prox?.lugar ? "Cómo llegar" : "Ferias y contacto"} <Icon n="flecha" size={20} /></Link></Reveal>
       </section>
     </>
   );

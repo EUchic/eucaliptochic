@@ -20,5 +20,6 @@ export async function permitido(req: Request) {
 /** La tienda vuelve a leer la base en la próxima visita. */
 export function refrescarTienda() {
   revalidateTag("catalogo");
+  revalidateTag("ferias");
   revalidatePath("/", "layout");
 }
