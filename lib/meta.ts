@@ -163,7 +163,9 @@ export async function diagnostico() {
       { optimization_goal: "CONVERSATIONS", targeting_spec: PUBLICO, promoted_object: { page_id: META.pagina } },
     );
     const curva = j.data?.[0]?.daily_outcomes_curve ?? [];
-    out.estimacion = { puntos: curva.length, primeros: curva.slice(0, 5).map((c) => ({ spend: c.spend, reach: c.reach })), dau: j.data?.[0]?.estimate_dau };
+    out.estimacion = { puntos: curva.length, primeros: curva.slice(0, 5).map((c) => ({ spend: c.spend, reach: c.reach })), dau: j.data?.[0]?.estimate_dau, crudo: JSON.stringify(j).slice(0, 700) };
+    const k = await graph<unknown>(`act_${META.cuenta}/delivery_estimate`, "GET", { optimization_goal: "REACH", targeting_spec: PUBLICO });
+    out.estimacionAlcance = JSON.stringify(k).slice(0, 700);
   } catch (e) {
     out.estimacion = { error: e instanceof Error ? e.message : String(e) };
   }
