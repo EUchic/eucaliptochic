@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ajustes, ErrorBase, guardarAccion, promos, type Promo } from "@/lib/db";
-import { alcanceEstimado, crearEnPausa, detener, encender, ErrorMeta, hayMeta, postsRecientes, PUBLICO_TEXTO, resultados } from "@/lib/meta";
+import { alcanceEstimado, crearEnPausa, diagnostico, detener, encender, ErrorMeta, hayMeta, postsRecientes, PUBLICO_TEXTO, resultados } from "@/lib/meta";
 import { no, permitido } from "@/lib/panel";
 import { idSeguro } from "@/lib/validar";
 
@@ -87,6 +87,11 @@ export async function POST(req: Request) {
       if (!Number.isFinite(monto) || monto < 0 || monto > 1_000_000) return no("Ese tope no se ve bien.", 400);
       await ajustes.guardar("tope_mensual", monto);
       return NextResponse.json(await estado());
+    }
+
+    if (b.accion === "diagnostico") {
+      // Nunca enciende nada: solo pregunta a Meta y arma/borra una prueba en pausa.
+      return NextResponse.json(await diagnostico());
     }
 
     if (b.accion === "estimar") {

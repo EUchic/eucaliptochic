@@ -82,7 +82,7 @@ export async function alcanceEstimado(porDia: number): Promise<{ min: number; ma
   try {
     const j = await graph<{ data: { daily_outcomes_curve?: { spend: number; reach: number }[] }[] }>(
       `act_${META.cuenta}/delivery_estimate`, "GET",
-      { optimization_goal: "CONVERSATIONS", targeting_spec: PUBLICO },
+      { optimization_goal: "CONVERSATIONS", targeting_spec: PUBLICO, promoted_object: { page_id: META.pagina } },
     );
     const curva = j.data?.[0]?.daily_outcomes_curve ?? [];
     if (!curva.length) return null;
@@ -147,4 +147,32 @@ export async function resultados(campana: string) {
   const f = j.data?.[0];
   const mensajes = f?.actions?.find((a) => a.action_type.startsWith("onsite_conversion.messaging_conversation_started"))?.value;
   return { gastado: Number(f?.spend ?? 0), alcance: Number(f?.reach ?? 0), mensajes: Number(mensajes ?? 0) };
+}
+
+/**
+ * Revisión técnica sin gastar: pide la estimación de alcance y arma una promoción de prueba EN PAUSA
+ * (nunca se enciende) que se borra enseguida. Sirve para confirmar que la llave y los datos funcionan.
+ */
+export async function diagnostico() {
+  const out: Record<string, unknown> = {};
+  try {
+    const j = await graph<{ data: { daily_outcomes_curve?: { spend: number; reach: number }[]; estimate_dau?: number }[] }>(
+      `act_${META.cuenta}/delivery_estimate`, "GET",
+      { optimization_goal: "CONVERSATIONS", targeting_spec: PUBLICO, promoted_object: { page_id: META.pagina } },
+    );
+    const curva = j.data?.[0]?.daily_outcomes_curve ?? [];
+    out.estimacion = { puntos: curva.length, primeros: curva.slice(0, 5).map((c) => ({ spend: c.spend, reach: c.reach })), dau: j.data?.[0]?.estimate_dau };
+  } catch (e) {
+    out.estimacion = { error: e instanceof Error ? e.message : String(e) };
+  }
+  try {
+    const post = (await postsRecientes())[0];
+    const manana = new Date(Date.now() + 24 * 3600e3);
+    const ids = await crearEnPausa({ nombre: "Prueba del panel (se borra sola)", mediaId: post.id, inicio: manana, fin: new Date(manana.getTime() + 24 * 3600e3), total: 5000 });
+    out.prueba = "se pudo crear en pausa";
+    try { await graph(ids.campaign_id, "DELETE"); out.borrada = true; } catch (e) { out.borrada = e instanceof Error ? e.message : String(e); }
+  } catch (e) {
+    out.prueba = { error: e instanceof Error ? e.message : String(e) };
+  }
+  return out;
 }
