@@ -21,14 +21,16 @@ export const hayMeta = () => Boolean(TOKEN);
 /** Público por defecto: mujeres de 25 a 60 en Costa Rica, y Meta amplía sola hacia quien tenga más chance de escribir. */
 export const PUBLICO = {
   geo_locations: { countries: ["CR"] },
+  // Con el público Advantage+ de Meta, la edad máxima va como sugerencia (age_range), no como límite.
   age_min: 25,
-  age_max: 60,
+  age_max: 65,
+  age_range: [25, 60],
   genders: [2],
   targeting_automation: { advantage_audience: 1 },
   publisher_platforms: ["instagram"],
   instagram_positions: ["stream", "story", "reels"],
 };
-export const PUBLICO_TEXTO = "Mujeres de 25 a 60 años en Costa Rica. Meta además busca sola a quienes tienen más chance de escribirte.";
+export const PUBLICO_TEXTO = "Mujeres en Costa Rica, sobre todo de 25 a 60 años. Meta además busca sola a quienes tienen más chance de escribirte.";
 
 export class ErrorMeta extends Error {
   constructor(mensaje: string, public codigo?: number) { super(mensaje); }
