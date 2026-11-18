@@ -6,10 +6,11 @@ import {
   type Accion, type Datos, type Pieza, type Respuesta, type Sentido, type TipoCambio,
 } from "@/lib/asistente";
 import Icon from "./Icon";
+import Anuncios from "./Anuncios";
 import { Mark } from "./Logo";
 
 type FotoPanel = { id: string; src: string; alt: string; pieza?: string };
-type Tab = "asistente" | "plata" | "piezas" | "ferias" | "fotos";
+type Tab = "asistente" | "plata" | "piezas" | "ferias" | "fotos" | "anuncios";
 const KEY = "euchic-panel-v2";
 const nid = () => crypto.randomUUID();
 
@@ -31,6 +32,9 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
   const [base, setBase] = useState(piezas);
   const [cols, setCols] = useState(colecciones);
   const [guardando, setGuardando] = useState(false);
+  const [colNueva, setColNueva] = useState("");
+  const [arrancar, setArrancar] = useState(false);
+  const [descartadas, setDescartadas] = useState<string[]>([]);
   const [mal, setMal] = useState(false);
   const [listo, setListo] = useState(false);
   const [tc, setTc] = useState<TipoCambio>(null);
@@ -47,6 +51,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
 
   useEffect(() => {
     if (!enLinea) try { const s = JSON.parse(localStorage.getItem(KEY) ?? "null"); if (s) setD({ ...VACIO, ...s }); } catch {}
+    try { setDescartadas(JSON.parse(localStorage.getItem(KEY + "-sug") ?? "[]")); } catch {}
     try { setVoz(localStorage.getItem(KEY + "-voz") !== "0"); } catch {}
     setListo(true);
     fetch("/api/tipo-cambio").then((r) => (r.ok ? r.json() : null)).then((j) => j && setTc(j)).catch(() => {});
@@ -114,6 +119,8 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
       tomarEstado(j.estado);
       if (!r.ok) throw new Error(j.error || "No se pudo guardar. Probá de nuevo.");
       const dicho = msg + (acciones.some(tocaTienda) ? " La tienda ya está al día." : "");
+      const col = acciones.find((a) => a.tipo === "coleccion");
+      if (col && col.tipo === "coleccion") setColNueva(col.nombre);
       setResp(null); setMal(false); setToast(dicho); hablar(msg);
     } catch (e) {
       const m = e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. No se guardó; probá de nuevo.";
@@ -177,7 +184,26 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
     setOido(""); setOyendo(true); r.start();
   };
 
-  const TABS: [Tab, string, string][] = [["asistente", "Hablar", "mic"], ["plata", "Plata", "moneda"], ["piezas", "Piezas", "percha"], ["ferias", "Ferias", "carpa"], ["fotos", "Fotos", "foto"]];
+  const TABS: [Tab, string, string][] = [["asistente", "Hablar", "mic"], ["plata", "Plata", "moneda"], ["piezas", "Piezas", "percha"], ["ferias", "Ferias", "carpa"], ["fotos", "Fotos", "foto"], ...(enLinea ? [["anuncios", "Anuncios", "megafono"] as [Tab, string, string]] : [])];
+
+  // Sugerencias para promocionar: colección recién creada, o una feria que viene en 4 a 10 días.
+  const feriaCerca = useMemo(() => {
+    const h = hoy();
+    return d.ferias
+      .map((f) => ({ ...f, faltan: Math.round((Date.parse(f.fecha + "T12:00:00Z") - Date.parse(h + "T12:00:00Z")) / 864e5) }))
+      .filter((f) => f.faltan >= 4 && f.faltan <= 10 && !descartadas.includes("feria-" + f.id))
+      .sort((a, b) => a.faltan - b.faltan)[0];
+  }, [d.ferias, descartadas]);
+  const sugerencia = !enLinea ? null
+    : colNueva ? { clave: "col-" + colNueva, texto: `Creaste la colección ${colNueva}. ¿Querés promocionar un post de la colección nueva?` }
+    : feriaCerca ? { clave: "feria-" + feriaCerca.id, texto: `Faltan ${feriaCerca.faltan} días para ${feriaCerca.nombre}. ¿Promocionamos un post para que más gente llegue?` }
+    : null;
+  const descartar = (clave: string) => {
+    setColNueva("");
+    const nuevas = [...descartadas, clave];
+    setDescartadas(nuevas);
+    try { localStorage.setItem(KEY + "-sug", JSON.stringify(nuevas.slice(-30))); } catch {}
+  };
 
   return (
     <div className="ad">
@@ -208,6 +234,17 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
             </button>
             <p className="orbe-txt" aria-live="polite">{oyendo ? "Te escucho…" : pensando ? "Pensando…" : guardando ? "Guardando…" : resp?.acciones.length ? "Decí «sí» o tocá Guardar" : "Tocá y hablame"}</p>
             {oido && <p className="ad-oido">«{oido}»</p>}
+
+            {sugerencia && !resp && (
+              <div className="ad-sug">
+                <Icon n="megafono" s={30} />
+                <p>{sugerencia.texto}</p>
+                <div className="ad-sino">
+                  <button className="btn ad-si" onClick={() => { descartar(sugerencia.clave); setArrancar(true); setTab("anuncios"); }}>Sí, vamos</button>
+                  <button className="ad-no" onClick={() => descartar(sugerencia.clave)}>Ahora no</button>
+                </div>
+              </div>
+            )}
 
             {resp && (
               <div className="ad-resp" role="status">
@@ -253,6 +290,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
         {tab === "piezas" && <Piezas todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} enLinea={enLinea} subir={subirFotos} subiendo={subiendo} />}
         {tab === "ferias" && <Ferias d={d} guardar={guardar} />}
         {tab === "fotos" && <Fotos fotos={fotos} d={d} piezas={todas} guardar={guardar} enLinea={enLinea} />}
+        {tab === "anuncios" && <Anuncios ferias={d.ferias} arrancar={arrancar} alArrancar={() => setArrancar(false)} avisar={(m, malo) => { setMal(!!malo); setToast(m); hablar(m); }} />}
       </main>
 
       {toast && <p className={"ad-toast" + (mal ? " is-mal" : "")} role={mal ? "alert" : "status"}><Icon n={mal ? "cerrar" : "check"} s={24} />{toast}</p>}

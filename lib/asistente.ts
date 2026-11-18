@@ -8,7 +8,7 @@ export const CATS: Record<Sentido, string[]> = {
   ingreso: ["Venta en feria", "Venta directa", "Venta web"],
   gasto: ["Tela", "Confección (Juanita)", "Feria", "Envíos", "Publicidad", "Comisiones", "Otro"],
 };
-export const METODOS = ["SINPE", "Efectivo", "Datáfono", "Transferencia", "ONVO"];
+export const METODOS = ["SINPE", "Efectivo", "Datáfono", "Transferencia", "ONVO", "Tarjeta"];
 
 export type Accion =
   | { id: string; tipo: "movimiento"; sentido: Sentido; monto: number; moneda: "CRC" | "USD"; categoria: string; metodo: string; concepto: string; feria?: string; fecha: string }

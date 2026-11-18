@@ -93,3 +93,46 @@ export const fotosEnSquarespace = (lim: number) =>
   rpc<{ id: string; url: string; slug: string }[]>("fotos_en_squarespace", { lim }, { secreta: true });
 export const fotoMudada = (id: string, url: string) => rpc<number>("foto_mudada", { p_id: id, p_url: url }, { secreta: true });
 export const fotosPorMudar = () => rpc<number>("fotos_por_mudar", {}, { secreta: true });
+
+// Tablas que solo usa el servidor (con la llave secreta): promociones de Meta y ajustes.
+async function rest<T>(ruta: string, o: { metodo?: string; cuerpo?: unknown; prefer?: string } = {}): Promise<T> {
+  if (!SECRETA) throw new ErrorBase("Falta la llave de la base de datos.");
+  const r = await fetch(`${URL_BASE}/rest/v1/${ruta}`, {
+    method: o.metodo ?? "GET",
+    headers: { ...cabeceras(SECRETA), ...(o.prefer ? { prefer: o.prefer } : {}) },
+    body: o.cuerpo === undefined ? undefined : JSON.stringify(o.cuerpo),
+    cache: "no-store",
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!r.ok) {
+    const j = (await r.json().catch(() => null)) as { message?: string } | null;
+    throw new ErrorBase(j?.message || `La base respondió ${r.status}`);
+  }
+  const texto = await r.text();
+  return (texto ? JSON.parse(texto) : null) as T;
+}
+
+export type Promo = {
+  id: string; media_id: string; permalink: string | null; caption: string | null; miniatura: string | null;
+  por_dia: number; dias: number; total: number; inicio: string; fin: string;
+  campaign_id: string | null; adset_id: string | null; ad_id: string | null;
+  estado: "creando" | "activa" | "detenida" | "terminada" | "error"; error: string | null;
+  gastado: number; gasto_registrado: boolean; creado: string;
+};
+
+export const promos = {
+  listar: () => rest<Promo[]>("promociones?select=*&order=creado.desc&limit=30"),
+  uno: async (id: string) => (await rest<Promo[]>(`promociones?id=eq.${encodeURIComponent(id)}&select=*`))[0] ?? null,
+  /** Crea la fila; si ese id ya existía (doble toque) no hace nada y devuelve null. */
+  crear: async (p: Partial<Promo>) =>
+    (await rest<Promo[]>("promociones?on_conflict=id", { metodo: "POST", cuerpo: p, prefer: "resolution=ignore-duplicates,return=representation" }))[0] ?? null,
+  cambiar: (id: string, campos: Partial<Promo>) =>
+    rest<Promo[]>(`promociones?id=eq.${encodeURIComponent(id)}`, { metodo: "PATCH", cuerpo: campos, prefer: "return=minimal" }),
+};
+
+export const ajustes = {
+  leer: async <T>(clave: string) =>
+    ((await rest<{ valor: T }[]>(`ajustes?clave=eq.${encodeURIComponent(clave)}&select=valor`))[0]?.valor ?? null) as T | null,
+  guardar: (clave: string, valor: unknown) =>
+    rest("ajustes?on_conflict=clave", { metodo: "POST", cuerpo: { clave, valor, actualizado: new Date().toISOString() }, prefer: "resolution=merge-duplicates,return=minimal" }),
+};

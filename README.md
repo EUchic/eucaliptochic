@@ -13,6 +13,7 @@ Tienda en línea y sistema de finanzas de Eucalipto Chic (by Andrea Bermúdez).
 | Fotos | Andrea las sube desde el teléfono (se achican antes de subir) a Supabase Storage |
 | Cobro con ONVO Pay | Pendiente de las llaves |
 | Asistente con IA y mejora de fotos | Pendiente de la llave de OpenAI (sin ella funciona el asistente básico) |
+| Anuncios de Instagram (`/admin` → Anuncios) | Paso a paso, con tope mensual y confirmación obligatoria. Pendiente de `META_ACCESS_TOKEN` |
 
 ## Variables en Vercel
 
@@ -23,6 +24,8 @@ Tienda en línea y sistema de finanzas de Eucalipto Chic (by Andrea Bermúdez).
 | `SUPABASE_SECRET_KEY` | Llave secreta (`sb_secret_…`) de Supabase → Settings → API Keys | El panel no puede guardar |
 | `OPENAI_API_KEY` | Asistente con IA y mejora de fotos | Asistente básico |
 | `ONVO_SECRET_KEY`, `NEXT_PUBLIC_ONVO_PUBLISHABLE_KEY` | Cobro con tarjeta | Pedido por WhatsApp |
+| `META_ACCESS_TOKEN` | Llave del usuario de sistema de Meta (negocio Eucalipto Chic) para las promociones de Instagram | La pestaña Anuncios dice que falta conectar |
+| `META_APP_SECRET` | Clave secreta de la app "Eucalipto Chic Panel" (firma cada llamada a Meta) | Funciona igual, con un poco menos de protección |
 
 La llave publicable de Supabase y la URL del proyecto van en el código (`lib/db.ts`): son públicas por diseño.
 

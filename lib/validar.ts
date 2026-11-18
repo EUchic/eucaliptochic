@@ -12,7 +12,7 @@ const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export class Invalida extends Error {}
 
 /** Un id que no sea UUID se convierte siempre en el mismo UUID, así la idempotencia se mantiene. */
-const idSeguro = (v: unknown) => {
+export const idSeguro = (v: unknown) => {
   const s = String(v ?? "").trim();
   if (!s || s.length > 100) throw new Invalida("Acción sin identificador.");
   if (UUID.test(s)) return s.toLowerCase();
