@@ -4,6 +4,7 @@ import { useState } from "react";
 import { categoriasDe, fechaLinda, fmt, hoy, METODOS, type Accion, type Datos, type Sentido, type TipoCambio } from "@/lib/asistente";
 import { cambio, mesActual, mover, paraIA, reporte, type Fila, type Reporte } from "@/lib/reporte";
 import Icon from "./Icon";
+import { avisarGuia } from "@/lib/guias";
 
 type G = (a: Accion[], msg?: string) => Promise<boolean>;
 type Analisis = { titular: string; puntos: { tipo: "bien" | "ojo" | "idea"; texto: string }[]; recomendaciones: string[] };
@@ -40,11 +41,12 @@ export function AnalisisIA({ r, d, guardar }: { r: Reporte; d: Datos; guardar: G
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || "No se pudo analizar.");
       setA(j.analisis);
+      avisarGuia("analisis");
       guardar([{ id: nid(), tipo: "ajuste", clave, valor: j.analisis }], "");
     } catch (e) { setError((e as Error).message); } finally { setCargando(false); }
   }
   if (!a) return (
-    <div className="pn-tarjeta pl-ia is-vacia">
+    <div className="pn-tarjeta pl-ia is-vacia" data-guia="analisis">
       <span className="pl-ia-ico"><Icon n="chispa" s={26} /></span>
       <div><b>Análisis con IA</b><p>Te explico cómo te fue en {r.nombre.split(" ")[0].toLowerCase()} y qué podés hacer para que el próximo mes te vaya mejor.</p></div>
       <button className="pn-btn" disabled={cargando || (!r.entro && !r.salio)} onClick={analizar}>{cargando ? <><span className="pn-girando is-chico" />Analizando…</> : "Analizar mi mes"}</button>
@@ -52,7 +54,7 @@ export function AnalisisIA({ r, d, guardar }: { r: Reporte; d: Datos; guardar: G
     </div>
   );
   return (
-    <div className="pn-tarjeta pl-ia">
+    <div className="pn-tarjeta pl-ia" data-guia="analisis">
       <p className="pl-ia-etq"><Icon n="chispa" s={20} />Análisis con IA</p>
       <h3>{a.titular}</h3>
       <ul className="pl-puntos">{a.puntos.map((p, i) => <li key={i} className={"is-" + p.tipo}><span>{p.tipo === "bien" ? "Bien" : p.tipo === "ojo" ? "Ojo" : "Idea"}</span>{p.texto}</li>)}</ul>
@@ -143,7 +145,7 @@ export default function Plata({ d, tc, guardar }: { d: Datos; tc: TipoCambio; gu
       </div>
 
       {anotar ? <Anotar d={d} sentido={anotar} guardar={guardar} cerrar={() => setAnotar(null)} /> : (
-        <div className="pn-botones">
+        <div className="pn-botones" data-guia="anotar">
           <button className="pn-btn is-grande is-tinte" onClick={() => setAnotar("ingreso")}><Icon n="mas" s={24} />Entró plata</button>
           <button className="pn-btn is-grande is-rosa" onClick={() => setAnotar("gasto")}><Icon n="menos" s={24} />Salió plata</button>
         </div>

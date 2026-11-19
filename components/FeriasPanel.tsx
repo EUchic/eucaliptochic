@@ -47,11 +47,11 @@ export function FichaFeria({ inicial, guardar, listo, cancelar }: {
   );
 }
 
-export default function FeriasPanel({ d, enLinea, guardar, subirFoto, avisar }: Props) {
+export default function FeriasPanel({ d, enLinea, guardar, subirFoto, avisar, abrir }: Props & { abrir?: string }) {
   const h = hoy();
   const proximas = d.ferias.filter((f) => f.fecha >= h).sort((a, b) => a.fecha.localeCompare(b.fecha));
   const pasadas = d.ferias.filter((f) => f.fecha < h).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const [abierta, setAbierta] = useState<string | null>(null);
+  const [abierta, setAbierta] = useState<string | null>(abrir && d.ferias.some((f) => f.id === abrir && f.fecha >= h) ? abrir : null);
   const [nueva, setNueva] = useState(false);
 
   return (
@@ -64,7 +64,7 @@ export default function FeriasPanel({ d, enLinea, guardar, subirFoto, avisar }: 
       {nueva ? (
         <div className="pn-tarjeta"><FichaFeria guardar={guardar} cancelar={() => setNueva(false)} listo={(f) => { setNueva(false); setAbierta(f.id); }} /></div>
       ) : (
-        <button className="pn-btn is-grande" onClick={() => setNueva(true)}><Icon n="mas" s={24} />Agregar una feria</button>
+        <button className="pn-btn is-grande" data-guia="nueva-feria" onClick={() => setNueva(true)}><Icon n="mas" s={24} />Agregar una feria</button>
       )}
 
       {d.ferias.length === 0 && !nueva && <p className="pn-vacio">Todavía no hay ferias anotadas.</p>}
@@ -72,7 +72,7 @@ export default function FeriasPanel({ d, enLinea, guardar, subirFoto, avisar }: 
       {proximas.length > 0 && (
         <>
           <h2 className="pn-sub">Próximas</h2>
-          <ul className="pn-lista">
+          <ul className="pn-lista" data-guia="ferias">
             {proximas.map((f) => (
               <li key={f.id} className={"pn-tarjeta fp-feria" + (abierta === f.id ? " is-abierta" : "")}>
                 <button className="fp-fila" onClick={() => enLinea && setAbierta(abierta === f.id ? null : f.id)} aria-expanded={abierta === f.id}>
@@ -105,7 +105,7 @@ export default function FeriasPanel({ d, enLinea, guardar, subirFoto, avisar }: 
                   <div><dt>Gastó</dt><dd>{fmt(x.gasto)}</dd></div>
                   <div className="is-fuerte"><dt>Te dejó</dt><dd>{fmt(x.dejo)}</dd></div>
                 </dl>
-                {enLinea && <Borrar f={f} guardar={guardar} />}
+                {enLinea && <Borrar f={f} guardar={guardar} guia={abrir === f.id} />}
               </li>
             ); })}
           </ul>
@@ -120,7 +120,7 @@ function Editor({ f, guardar, subirFoto, avisar, cerrar }: { f: Feria; guardar: 
   const [cambiar, setCambiar] = useState(f.lat == null);
   const ir = f.lat != null && f.lng != null ? comoLlegar({ ...f, lat: f.lat, lng: f.lng } as never) : null;
   return (
-    <div className="fp-editor">
+    <div className="fp-editor" data-guia="editar-feria">
       <div className="fp-foto">
         {f.foto ? <img src={f.foto} alt={`Foto de ${f.nombre}`} /> : <span className="fp-sinfoto"><Icon n="foto" s={30} />Sin foto</span>}
         <div className="pn-botones">
@@ -152,14 +152,14 @@ function Editor({ f, guardar, subirFoto, avisar, cerrar }: { f: Feria; guardar: 
           }} />
         )}
       </div>
-      <Borrar f={f} guardar={guardar} alBorrar={cerrar} />
+      <Borrar f={f} guardar={guardar} alBorrar={cerrar} guia />
     </div>
   );
 }
 
-function Borrar({ f, guardar, alBorrar }: { f: Feria; guardar: Props["guardar"]; alBorrar?: () => void }) {
+function Borrar({ f, guardar, alBorrar, guia }: { f: Feria; guardar: Props["guardar"]; alBorrar?: () => void; guia?: boolean }) {
   const [seguro, setSeguro] = useState(false);
-  if (!seguro) return <button className="pn-txt is-peligro fp-borrar" onClick={() => setSeguro(true)}><Icon n="basura" s={18} />Borrar feria</button>;
+  if (!seguro) return <button className="pn-txt is-peligro fp-borrar" data-guia={guia ? "borrar-feria" : undefined} onClick={() => setSeguro(true)}><Icon n="basura" s={18} />Borrar feria</button>;
   return (
     <div className="pn-seguro">
       <p>¿Borrar {f.nombre}? Se quita de la página. Lo que vendiste ahí queda anotado en Plata.</p>

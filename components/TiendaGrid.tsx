@@ -55,6 +55,7 @@ export default function TiendaGrid({ items, cards, inicial }: { items: Product[]
         <label className="fil-busca">
           <Icon n="lupa" size={22} />
           <input type="search" placeholder="Buscar una pieza" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar una pieza" />
+          {q && <button type="button" className="fil-borrar" onClick={() => setQ("")} aria-label="Borrar la búsqueda"><Icon n="cerrar" size={18} /></button>}
         </label>
         <Grupo titulo="Tipo de pieza" valor={tipo} set={setTipo} ops={tipos} f={(o) => (p) => p.tipo === o} />
         <Grupo titulo="Colección" valor={col} set={setCol} ops={cols} f={(o) => (p) => p.coleccion === o} />

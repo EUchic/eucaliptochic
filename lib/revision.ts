@@ -22,7 +22,7 @@ export function revisar(d: Datos, piezas: Pieza[]): Pregunta[] {
   const visibles = piezas.filter((p) => !p.oculta);
 
   const propuestas = piezas.filter((p) => p.propuesta).length;
-  if (propuestas) out.push({ clave: "fotos-ia-" + h, que: "fotos_ia", texto: `Tengo ${propuestas === 1 ? "una foto nueva" : propuestas + " fotos nuevas"} de producto hechas con IA. ¿Las revisás?` });
+  if (propuestas) out.push({ clave: "fotos-ia-" + h, que: "fotos_ia", texto: propuestas === 1 ? "Tengo una foto nueva de producto hecha con IA. ¿La revisás?" : `Tengo ${propuestas} fotos nuevas de producto hechas con IA. ¿Las revisás?` });
 
   for (const p of visibles.filter((p) => !p.precio)) out.push({ clave: "precio-" + p.slug, que: "precio", slug: p.slug, texto: `¿Cuánto cuesta ${p.nombre}? En la tienda sale sin precio.` });
   for (const p of visibles.filter((p) => !p.foto)) out.push({ clave: "foto-" + p.slug, que: "foto", slug: p.slug, texto: `A ${p.nombre} le falta foto. ¿Me la mandás?` });

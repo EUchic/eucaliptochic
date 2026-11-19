@@ -166,7 +166,10 @@ export async function piezaConFotos(slug: string) {
   // La referencia es la foto ORIGINAL de portada (aunque ya esté escondida de la tienda); si no hay, la primera que haya.
   const fotos = await rest<{ id: string; url: string; origen: string }[]>(`fotos?select=id,url,origen&pieza_id=eq.${p.id}&estado=neq.propuesta&order=orden.asc,creado.asc&limit=20`);
   const ref = fotos.find((f) => f.origen !== "ia") ?? fotos[0];
-  return { ...p, fotos: ref ? [ref.url] : [], base: ref?.origen !== "ia" ? ref?.id ?? null : null };
+  // El último intento de IA (la propuesta pendiente o la aprobada): sirve para corregir solo lo que salió mal.
+  const ia = await rest<{ url: string; estado: string }[]>(`fotos?select=url,estado&pieza_id=eq.${p.id}&origen=eq.ia&estado=in.(propuesta,aprobada)&order=creado.desc&limit=6`);
+  const intento = (ia.find((f) => f.estado === "propuesta") ?? ia[0])?.url ?? null;
+  return { ...p, fotos: ref ? [ref.url] : [], base: ref?.origen !== "ia" ? ref?.id ?? null : null, intento };
 }
 
 /** Anota en qué foto original se basó una foto de IA (al aprobarla, esa original se esconde de la tienda). */

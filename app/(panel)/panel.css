@@ -304,8 +304,7 @@ html.teclado .ch-mic, html.teclado .ch-enviar { width: 52px; height: 52px; }
 .ch-oyendo-botones .pn-boton { flex: 1; min-height: 54px; }
 
 /* La etiqueta del mes, como la etiqueta colgante de una prenda */
-.etq { position: relative; display: flex; align-items: center; padding-left: 18px; margin: 4px 0 6px; }
-.etq-hilo { position: absolute; left: 0; top: 50%; width: 34px; height: 1.5px; background: var(--salvia); }
+.etq { position: relative; display: flex; align-items: center; margin: 4px 0 6px; }
 .etq-cuerpo {
   position: relative; flex: 1; max-width: 420px; display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 2px 18px;
   padding: 16px 20px 16px 42px; background: #fff; box-shadow: var(--sombra);
@@ -610,3 +609,64 @@ html.teclado .ch-mic, html.teclado .ch-enviar { width: 52px; height: 52px; }
 .si-rejilla button[aria-pressed="true"] img { box-shadow: 0 0 0 3px var(--bosque); }
 .si-rejilla span { font-size: 13px; font-weight: 600; color: var(--tinta-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pn-btn.is-ocupado { opacity: 0.6; pointer-events: none; }
+.ti-ficha-subir.is-ref { height: 120px; background: #fff; }
+
+/* ── Guía paso a paso (después de «Te llevo») ── */
+.gu {
+  position: fixed; z-index: 60; left: 12px; right: 12px; bottom: calc(var(--tabs) + 10px);
+  background: #fff; border-radius: 20px; padding: 14px 16px 16px; display: grid; gap: 8px;
+  box-shadow: 0 10px 34px rgba(27, 31, 29, 0.18), 0 0 0 1.5px var(--salvia);
+  animation: pn-sube 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.gu.is-fin { box-shadow: 0 10px 34px rgba(27, 31, 29, 0.18), 0 0 0 2px var(--bosque); }
+.gu-cab { display: flex; align-items: center; gap: 8px; }
+.gu-ico { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--salvia-claro); color: var(--bosque); flex: none; }
+.gu.is-fin .gu-ico { background: var(--bosque); color: #fff; }
+.gu-titulo { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; color: var(--bosque); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gu-cuenta { font-size: 14px; font-weight: 600; color: var(--tinta-3); flex: none; }
+.gu-x { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--tinta-3); flex: none; margin: -4px -6px -4px 0; }
+.gu-texto { font-size: 18px; line-height: 1.4; font-weight: 500; color: var(--tinta); }
+.gu-nota { font-size: 15px; color: var(--tinta-2); }
+.gu-botones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.pn.con-guia .pn-main { padding-bottom: calc(var(--tabs) + 230px); }
+html.teclado .gu { display: none; }
+.gu-foco { outline: 3px solid var(--bosque) !important; outline-offset: 3px; animation: gu-late 1.6s ease-in-out infinite; scroll-margin: 90px 0 240px; }
+.ti-fotos .gu-foco { outline-offset: -3px; }
+@keyframes gu-late { 50% { outline-color: rgba(46, 74, 61, 0.3); outline-offset: 6px; } }
+@media (prefers-reduced-motion: reduce) { .gu-foco { animation: none; } .gu { animation: none; } }
+@media (min-width: 900px) {
+  .gu { left: calc(50% + 116px); right: auto; translate: -50% 0; width: min(560px, calc(100vw - 300px)); bottom: 24px; }
+  html.teclado .gu { display: grid; }
+  .pn.con-guia .pn-main { padding-bottom: 240px; }
+}
+
+.etq-cuerpo.is-vacia { grid-template-columns: 1fr; gap: 6px; }
+.etq-nada { font-size: 16px; color: var(--tinta-2); }
+
+/* ── Inicio: saludo, micrófono grande y acciones ── */
+.ch-saludo { padding: 6px 2px 2px; }
+.ch-saludo h1 { font: 500 34px/1.08 var(--titulo); letter-spacing: -0.01em; }
+.ch-saludo p { margin-top: 6px; font-size: 16px; color: var(--tinta-2); }
+.ch-bienvenida { display: grid; gap: 16px; animation: pn-sube 0.3s ease; }
+.ch-hablame { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 22px 18px 18px; border-radius: 26px; background: linear-gradient(180deg, var(--salvia-claro), #fff 78%); box-shadow: var(--sombra); }
+.ch-mic-grande { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; background: var(--bosque); color: #fff; box-shadow: 0 0 0 10px rgba(46, 74, 61, 0.1), 0 14px 30px rgba(46, 74, 61, 0.35); transition: transform 0.12s; }
+.ch-mic-grande:active { transform: scale(0.94); }
+.ch-hablame-txt { display: grid; gap: 4px; margin-top: 8px; }
+.ch-hablame-txt b { font-size: 22px; font-weight: 700; }
+.ch-hablame-txt span { font-size: 16px; color: var(--tinta-2); }
+.ch-ejemplo { min-height: 48px; max-width: 30ch; font: italic 400 20px/1.25 var(--titulo); color: var(--bosque); animation: ch-aparece 0.5s ease; }
+@keyframes ch-aparece { from { opacity: 0; transform: translateY(4px); } }
+.ch-o { font-size: 16px; font-weight: 600; color: var(--tinta-2); padding: 4px 2px 0; }
+.ch-acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ch-acciones button { display: grid; gap: 10px; align-content: start; min-height: 128px; padding: 16px; border-radius: 20px; background: #fff; box-shadow: var(--sombra); text-align: left; transition: transform 0.12s, background-color 0.2s; }
+.ch-acciones button:active { transform: scale(0.97); background: var(--salvia-claro); }
+.ch-acc-ico { width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; background: var(--salvia-claro); color: var(--bosque); }
+.ch-acciones button:nth-child(2) .ch-acc-ico { background: var(--rojo-claro); color: var(--rojo); }
+.ch-acc-txt { display: grid; gap: 3px; }
+.ch-acc-txt b { font-size: 17px; line-height: 1.2; }
+.ch-acc-txt small { font-size: 14px; line-height: 1.3; color: var(--tinta-2); }
+@media (min-width: 900px) {
+  .ch-acciones { grid-template-columns: repeat(3, 1fr); }
+  .ch-saludo h1 { font-size: 42px; }
+}
+@media (prefers-reduced-motion: reduce) { .ch-ejemplo, .ch-bienvenida { animation: none; } }

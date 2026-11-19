@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { VACIO, aplicar, fmt, hoy, type Accion, type Datos, type Feria, type Pieza, type TipoCambio } from "@/lib/asistente";
+import { VACIO, aplicar, fmt, hoy, norm, type Accion, type Datos, type Feria, type Pieza, type TipoCambio } from "@/lib/asistente";
 import type { Seccion } from "@/lib/cerebro";
+import { armarGuia, avisarGuia, seccionDe, type Guia as GuiaT, type PedidoGuia } from "@/lib/guias";
 import { revisar } from "@/lib/revision";
 import Anuncios from "./Anuncios";
-import Chat, { achicarFoto } from "./Chat";
+import Chat from "./Chat";
+import { achicarFoto } from "./achicar";
 import FeriasPanel from "./FeriasPanel";
+import Guia from "./Guia";
 import { callar } from "./hablar";
 import Icon from "./Icon";
 import { Mark } from "./Logo";
@@ -60,6 +63,8 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
   const [toast, setToast] = useState("");
   const [vozOn, setVozOn] = useState(true);
   const [menu, setMenu] = useState(false);
+  const [guia, setGuia] = useState<GuiaT | null>(null);
+  const [abrir, setAbrir] = useState<{ slug?: string; feria?: string; n: number }>({ n: 0 });
   useTeclado();
 
   useEffect(() => {
@@ -73,13 +78,23 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
   useEffect(() => { if (listo && !enLinea) try { localStorage.setItem(KEY, JSON.stringify(d)); } catch {} }, [d, listo, enLinea]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => { setToast(""); setMal(false); }, mal ? 6500 : 3200); return () => clearTimeout(t); }, [toast, mal]);
 
-  const irA = useCallback((s: Seccion) => {
+  const todas = useMemo(() => [...d.nuevas, ...base].map((p) => ({ ...p, ...d.cambios[p.slug] })), [base, d]);
+
+  /** Cambia de sección. Con una tarea, abre lo que haga falta y la guía la acompaña paso a paso. */
+  const irA = useCallback((s: Seccion, pedido?: PedidoGuia) => {
+    if (pedido?.tarea) {
+      const pz = pedido.slug ? todas.find((p) => p.slug === pedido.slug) : undefined;
+      const q = pedido.feria ? norm(pedido.feria) : "";
+      const fe = q ? d.ferias.find((f) => f.id === pedido.feria || norm(f.nombre) === q) ?? d.ferias.find((f) => norm(f.nombre).includes(q)) : undefined;
+      const g = armarGuia(pedido.tarea, { pieza: pz && { slug: pz.slug, nombre: pz.nombre, propuesta: pz.propuesta }, feria: fe && { id: fe.id, nombre: fe.nombre } });
+      s = seccionDe(g.tarea);
+      setAbrir((a) => ({ slug: g.slug, feria: g.feria, n: a.n + 1 }));
+      setGuia(g);
+    } else setGuia((g) => (g && g.seccion === s ? g : null));
     setTab(s); setMenu(false); callar();
     try { localStorage.setItem(KEY + "-tab", s); } catch {}
     window.scrollTo({ top: 0 });
-  }, []);
-
-  const todas = useMemo(() => [...d.nuevas, ...base].map((p) => ({ ...p, ...d.cambios[p.slug] })), [base, d]);
+  }, [todas, d.ferias]);
   const todasColecciones = useMemo(() => [...new Set([...cols, ...d.colecciones])], [cols, d.colecciones]);
   const preguntas = useMemo(() => (enLinea ? revisar(d, todas) : []), [d, todas, enLinea]);
   const avisar = useCallback((m: string, malo?: boolean) => { setMal(!!malo); setToast(m); }, []);
@@ -108,6 +123,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
       const col = acciones.find((a) => a.tipo === "coleccion");
       if (col && col.tipo === "coleccion") setColNueva(col.nombre);
       if (msg) avisar(msg + (acciones.some(tocaTienda) && !/página|tienda/.test(msg) ? " La página ya está al día." : ""));
+      acciones.forEach((a) => avisarGuia("accion:" + a.tipo));
       return true;
     } catch (e) {
       avisar(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. No se guardó; probá de nuevo.", true);
@@ -132,6 +148,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
     try {
       for (const f of archivos.slice(0, 8)) await subirArchivo({ slug: p.slug }, f);
       avisar(archivos.length > 1 ? `Fotos subidas a ${p.nombre}.` : `Foto subida a ${p.nombre}.`);
+      avisarGuia("foto_subida");
       return true;
     } catch (e) {
       avisar(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. La foto no se subió.", true);
@@ -140,7 +157,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
   }, [subirArchivo, avisar]);
 
   const subirFotoFeria = useCallback(async (f: Feria, archivo: File) => {
-    try { await subirArchivo({ feria: f.id }, archivo); avisar(`Foto puesta en ${f.nombre}.`); }
+    try { await subirArchivo({ feria: f.id }, archivo); avisar(`Foto puesta en ${f.nombre}.`); avisarGuia("foto_feria"); }
     catch (e) { avisar(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "No hay internet. La foto no se subió.", true); }
   }, [subirArchivo, avisar]);
 
@@ -167,10 +184,10 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
   const titulo = SECCIONES.find(([k]) => k === tab)?.[1];
 
   return (
-    <div className={"pn is-" + tab}>
+    <div className={"pn is-" + tab + (guia && tab === guia.seccion ? " con-guia" : "")}>
       <header className="pn-barra">
         <a href="/" className="pn-logo" aria-label="Ver la tienda"><Mark part="full" /></a>
-        <p className="pn-barra-titulo" aria-hidden>{tab === "inicio" ? "Hola, Andrea" : titulo}</p>
+        <p className="pn-barra-titulo" aria-hidden>{titulo}</p>
         <button className={"pn-icono" + (vozOn ? " is-on" : "")} aria-label={vozOn ? "Silenciar la voz del asistente" : "Que el asistente me hable"} aria-pressed={vozOn}
           onClick={() => { const on = !vozOn; setVozOn(on); if (!on) callar(); try { localStorage.setItem(KEY + "-voz3", on ? "1" : "0"); } catch {} avisar(on ? "El asistente te va a contestar en voz alta cuando le hablés." : "Listo, el asistente contesta solo por escrito."); }}>
           <Icon n="altavoz" s={24} />
@@ -209,12 +226,14 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
           </>
         )}
         {tab === "plata" && <Plata d={d} tc={tc} guardar={guardar} />}
-        {tab === "tienda" && <Tienda todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} subir={subirFotos} fotos={fotosSueltas} d={d} avisar={avisar} refrescar={refrescar} />}
-        {tab === "ferias" && <FeriasPanel d={d} enLinea={enLinea} guardar={guardar} subirFoto={subirFotoFeria} avisar={avisar} />}
+        {tab === "tienda" && <Tienda key={"t" + abrir.n} abrir={abrir.slug} todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} subir={subirFotos} fotos={fotosSueltas} d={d} avisar={avisar} refrescar={refrescar} />}
+        {tab === "ferias" && <FeriasPanel key={"f" + abrir.n} abrir={abrir.feria} d={d} enLinea={enLinea} guardar={guardar} subirFoto={subirFotoFeria} avisar={avisar} />}
         {tab === "anuncios" && (enLinea
           ? <Anuncios ferias={d.ferias} piezas={todas} arrancar={arrancar} alArrancar={() => setArrancar(false)} avisar={avisar} />
           : <section className="pn-seccion"><header className="pn-titulo"><h1>Anuncios</h1><p>Las promociones se hacen cuando el panel está conectado.</p></header></section>)}
       </main>
+
+      {guia && tab === guia.seccion && <Guia key={guia.id} g={guia} voz={vozOn} cerrar={() => setGuia(null)} volver={() => { setGuia(null); irA("inicio"); }} />}
 
       <nav className="pn-tabs" aria-label="Secciones">
         {SECCIONES.map(([k, t, ic]) => (

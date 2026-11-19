@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { TAREAS, seccionDe, type Tarea } from "@/lib/guias";
 import { CATS, METODOS, describir, fmt, hoy, type Accion, type Talla } from "@/lib/asistente";
 import type { Movimiento, Seccion, Tarjeta } from "@/lib/cerebro";
 import { responses, textoDe } from "@/lib/ia";
@@ -72,7 +73,12 @@ function herramientas(cats: string[]) {
     }, ["que"]),
     fn("mejorar_foto", "Abre el paso para subir o escoger una foto de una pieza y mejorarla con IA.", { slug: { type: "string" } }),
     fn("rehacer_foto_ia", "Cuando Andrea dice que la foto de producto hecha con IA de una pieza tiene un error (color, largo, mangas, detalles…). Muestra el cuadro para decir qué está mal y hacerla otra vez.", { slug: { type: "string" }, que_esta_mal: { type: "string", description: "Lo que está mal, con las palabras de Andrea, si ya lo dijo" } }, ["slug"]),
-    fn("ir_a", "Lleva a Andrea a una sección del panel.", { seccion: { type: "string", enum: SECCIONES }, boton: { type: "string", description: "Texto corto del botón" } }, ["seccion", "boton"]),
+    fn("ir_a", "Lleva a Andrea a una sección del panel. Si va a hacer algo allá, poné la tarea: el panel la guía paso a paso (le dice qué tocar y se lo resalta) hasta que termina. Usalo para lo que no se puede hacer aquí en el chat.", {
+      seccion: { type: "string", enum: SECCIONES }, boton: { type: "string", description: "Texto corto del botón, ej.: «Llevame»" },
+      tarea: { type: "string", enum: [...TAREAS], description: "Lo que va a hacer allá" },
+      pieza: { type: "string", description: "slug de la pieza, si la tarea es de una pieza" },
+      feria: { type: "string", description: "nombre de la feria, si la tarea es de una feria" },
+    }, ["seccion", "boton"]),
     fn("mostrar_resumen", "Muestra la etiqueta con lo que entró, salió y le queda este mes."),
     fn("mostrar_reporte", "Muestra el reporte del mes con el análisis y recomendaciones."),
   ];
@@ -296,11 +302,14 @@ function convertir(nombre: string | undefined, a: Record<string, unknown>, pieza
       const p = pieza(a.slug);
       return p
         ? [{ tarjeta: { tipo: "rehacer", slug: p.slug, texto: txt(a.que_esta_mal, 400) ?? undefined }, texto: `Contame qué está mal en la foto de ${p.nombre} y la hago otra vez.`, p: 2 }]
-        : [{ tarjeta: { tipo: "ir", seccion: "tienda", boton: "Escoger la pieza en Tienda" }, texto: "¿De cuál pieza es la foto que salió mal? También la podés buscar en Tienda.", p: 5 }];
+        : [{ tarjeta: { tipo: "ir", seccion: "tienda", boton: "Escoger la pieza en Tienda", tarea: "rehacer_foto" }, texto: "¿De cuál pieza es la foto que salió mal? También la podés buscar en Tienda.", p: 5 }];
     }
     case "ir_a": {
-      const s = SECCIONES.includes(a.seccion as Seccion) ? (a.seccion as Seccion) : null;
-      return s ? [{ tarjeta: { tipo: "ir", seccion: s, boton: txt(a.boton, 30) ?? "Ir" }, texto: "Te llevo.", p: 4 }] : [];
+      const tarea = (TAREAS as readonly string[]).includes(String(a.tarea)) ? (a.tarea as Tarea) : undefined;
+      const s = tarea ? seccionDe(tarea) : SECCIONES.includes(a.seccion as Seccion) ? (a.seccion as Seccion) : null;
+      const pz = tarea ? pieza(a.pieza) : undefined;
+      const fe = tarea && a.feria ? txt(a.feria, 80) ?? undefined : undefined;
+      return s ? [{ tarjeta: { tipo: "ir", seccion: s, boton: txt(a.boton, 30) ?? "Llevame", tarea, slug: pz?.slug, feria: fe }, texto: tarea ? "Te llevo y te voy diciendo qué tocar." : "Te llevo.", p: 4 }] : [];
     }
     case "mostrar_resumen": return [{ tarjeta: { tipo: "resumen" }, texto: "Así vas este mes.", p: 4 }];
     case "mostrar_reporte": return [{ tarjeta: { tipo: "reporte" }, texto: "Aquí está tu reporte del mes.", p: 4 }];

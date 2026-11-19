@@ -5,7 +5,7 @@ import {
   categoriasDe, describir, fmt, hoy, METODOS, porFeria, respuestaCorta, resumenMes,
   type Accion, type Datos, type Pieza, type TipoCambio,
 } from "@/lib/asistente";
-import { pensarLocal, SUGERENCIAS, type Movimiento, type Pendiente, type Pensado, type Seccion, type Tarjeta } from "@/lib/cerebro";
+import { pensarLocal, type Movimiento, type Pendiente, type Pensado, type Seccion, type Tarjeta } from "@/lib/cerebro";
 import { mesActual, reporte } from "@/lib/reporte";
 import type { Pregunta } from "@/lib/revision";
 import { Promocionar, Publicar } from "./Anuncios";
@@ -14,13 +14,16 @@ import { callar, desbloquear, hablar } from "./hablar";
 import Icon from "./Icon";
 import Revision from "./Revision";
 import { FichaProducto, RehacerFoto } from "./Tienda";
+import { achicarFoto } from "./achicar";
+import type { PedidoGuia } from "@/lib/guias";
+export { achicarFoto };
 import { Escuchando, useVoz } from "./Voz";
 
 export type Mensaje = { id: string; de: "ella" | "asis"; texto: string; tarjeta?: Tarjeta; hecho?: boolean; nota?: string; motor?: string };
 type G = (a: Accion[], msg?: string) => Promise<boolean>;
 type Props = {
   d: Datos; piezas: Pieza[]; colecciones: string[]; tipos: string[]; tc: TipoCambio; enLinea: boolean;
-  guardar: G; irA: (s: Seccion) => void; subirFotos: (p: Pieza, f: File[]) => Promise<boolean>;
+  guardar: G; irA: (s: Seccion, pedido?: PedidoGuia) => void; subirFotos: (p: Pieza, f: File[]) => Promise<boolean>;
   avisar: (m: string, malo?: boolean) => void; clave: string; vozOn: boolean; preguntas: Pregunta[];
   refrescar: () => Promise<void>;
 };
@@ -41,7 +44,7 @@ export default function Chat(props: Props) {
   }, [clave]);
   useEffect(() => {
     try { localStorage.setItem(clave, JSON.stringify(msgs.slice(-40).map(({ tarjeta, ...m }) => ({ ...m, hecho: true, tarjeta: tarjeta?.tipo === "resumen" ? tarjeta : undefined })))); } catch {}
-    requestAnimationFrame(() => fin.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+    if (msgs.length) requestAnimationFrame(() => fin.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
   }, [msgs, clave]);
 
   const cerrarTarjeta = useCallback((id: string, nota?: string, dicho?: string) => {
@@ -125,13 +128,18 @@ export default function Chat(props: Props) {
   return (
     <section className="ch">
       <div className="ch-hilo" aria-live="polite">
-        <Etiqueta d={d} />
-        <Revision preguntas={preguntas} d={d} piezas={piezas} guardar={guardar} irA={irA} abrirFoto={abrirFoto} preguntarAlAsistente={(t) => procesar(t)} />
-        {vacio && (
-          <div className="ch-msg is-asis">
-            <p className="ch-burbuja is-asis">Hola, Andrea. Contame qué pasó hoy o qué ocupás y yo me encargo. Tocá el micrófono y hablame como a una persona.</p>
-            <Opciones ops={SUGERENCIAS} elegir={(o) => procesar(o)} />
-          </div>
+        {vacio ? (
+          <>
+            <Saludo />
+            <Bienvenida d={d} piezas={piezas} hablarle={() => v.empezar()} elegir={(o) => procesar(o)}>
+              <Revision preguntas={preguntas} d={d} piezas={piezas} guardar={guardar} irA={irA} abrirFoto={abrirFoto} preguntarAlAsistente={(t) => procesar(t)} />
+            </Bienvenida>
+          </>
+        ) : (
+          <>
+            <Etiqueta d={d} />
+            <Revision preguntas={preguntas} d={d} piezas={piezas} guardar={guardar} irA={irA} abrirFoto={abrirFoto} preguntarAlAsistente={(t) => procesar(t)} />
+          </>
         )}
         {msgs.map((m) => (
           <div key={m.id} className={"ch-msg is-" + m.de}>
@@ -164,17 +172,81 @@ export default function Chat(props: Props) {
 export function Etiqueta({ d }: { d: Datos }) {
   const r = resumenMes(d);
   const mesNombre = new Date(hoy() + "T12:00:00").toLocaleDateString("es-CR", { month: "long" });
+  const nada = !r.entro && !r.salio;
   return (
     <div className="etq" role="group" aria-label={`Resumen de ${mesNombre}`}>
-      <span className="etq-hilo" aria-hidden />
-      <div className="etq-cuerpo">
+      <div className={"etq-cuerpo" + (nada ? " is-vacia" : "")}>
         <p className="etq-mes">{mesNombre}</p>
-        <p className="etq-queda"><small>Te queda</small><b>{fmt(r.queda)}</b></p>
-        <dl>
-          <div><dt>Entró</dt><dd>{fmt(r.entro)}</dd></div>
-          <div><dt>Salió</dt><dd>{fmt(r.salio)}</dd></div>
-        </dl>
+        {nada ? <p className="etq-nada">Todavía no hay nada anotado este mes.</p> : (
+          <>
+            <p className="etq-queda"><small>Te queda</small><b>{fmt(r.queda)}</b></p>
+            <dl>
+              <div><dt>Entró</dt><dd>{fmt(r.entro)}</dd></div>
+              <div><dt>Salió</dt><dd>{fmt(r.salio)}</dd></div>
+            </dl>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** Saludo según la hora, con la fecha de hoy. */
+function Saludo() {
+  const [ahora, setAhora] = useState<Date | null>(null);
+  useEffect(() => setAhora(new Date()), []);
+  if (!ahora) return <div className="ch-saludo" aria-hidden><h1>&nbsp;</h1><p>&nbsp;</p></div>;
+  const h = ahora.getHours();
+  const hola = h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
+  const fecha = ahora.toLocaleDateString("es-CR", { weekday: "long", day: "numeric", month: "long" });
+  return <div className="ch-saludo"><h1>{hola}, Andrea</h1><p>{fecha.replace(/^./, (c) => c.toUpperCase())}</p></div>;
+}
+
+const ACCIONES: [string, string, string][] = [
+  ["Anotar una venta", "moneda", "Lo que te pagaron"],
+  ["Anotar un gasto", "menos", "Lo que pagaste"],
+  ["Meter un producto nuevo", "percha", "Con foto, precio y tallas"],
+  ["Promocionar un post", "megafono", "En Instagram y Facebook"],
+  ["Agregar una feria", "carpa", "Para que salga en la página"],
+  ["¿Cómo voy este mes?", "grafica", "Tu resumen y consejos"],
+];
+
+/** Pantalla de inicio: el micrófono grande (lo principal es hablarle) y lo que más hace, en botones grandes. */
+function Bienvenida({ d, piezas, hablarle, elegir, children }: { d: Datos; piezas: Pieza[]; hablarle: () => void; elegir: (t: string) => void; children?: React.ReactNode }) {
+  const ejemplos = useMemo(() => {
+    const pz = piezas.find((p) => p.precio && !p.oculta);
+    const quien = d.personas.find((p) => p.rol !== "clienta")?.nombre ?? "Juanita";
+    return [
+      pz ? `Vendí ${/a$/i.test(pz.nombre.split(/[\s/]/)[0]) ? "la" : "el"} ${pz.nombre} en ${fmt(pz.precio)} por SINPE` : "Vendí una blusa por SINPE",
+      `Le pagué ${fmt(15000)} a ${quien}`,
+      "¿Cómo voy este mes?",
+      "Quiero promocionar mi último post",
+    ];
+  }, [d.personas, piezas]);
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => setI((x) => (x + 1) % ejemplos.length), 4200);
+    return () => clearInterval(t);
+  }, [ejemplos.length]);
+  return (
+    <div className="ch-bienvenida">
+      <div className="ch-hablame">
+        <button className="ch-mic-grande" onClick={hablarle} aria-label="Hablarle al asistente"><Icon n="mic" s={44} /></button>
+        <p className="ch-hablame-txt"><b>Tocá y hablame</b><span>Como si le contaras a una persona. Por ejemplo:</span></p>
+        <p className="ch-ejemplo" key={i}>«{ejemplos[i]}»</p>
+      </div>
+      {children}
+      <p className="ch-o">O tocá lo que querés hacer</p>
+      <div className="ch-acciones">
+        {ACCIONES.map(([t, ic, sub]) => (
+          <button key={t} onClick={() => elegir(t)}>
+            <span className="ch-acc-ico"><Icon n={ic} s={26} /></span>
+            <span className="ch-acc-txt"><b>{t}</b><small>{sub}</small></span>
+          </button>
+        ))}
+      </div>
+      <Etiqueta d={d} />
     </div>
   );
 }
@@ -189,7 +261,7 @@ function TarjetaVista(p: VistaProps) {
   const { t } = p;
   switch (t.tipo) {
     case "opciones": return t.ops.length ? <Opciones ops={t.ops} elegir={p.elegir} /> : null;
-    case "ir": return <div className="ch-tarjeta is-chica"><button className="pn-btn" onClick={() => { p.irA(t.seccion); p.cerrar("Andrea fue a " + t.seccion); }}>{t.boton}<Icon n="flecha" s={22} /></button></div>;
+    case "ir": return <div className="ch-tarjeta is-chica"><button className="pn-btn" onClick={() => { p.irA(t.seccion, t.tarea ? { tarea: t.tarea, slug: t.slug, feria: t.feria } : undefined); p.cerrar("Andrea fue a " + t.seccion + (t.tarea ? ` (guiada: ${t.tarea})` : "")); }}>{t.boton}<Icon n="flecha" s={22} /></button></div>;
     case "resumen": return <Etiqueta d={p.d} />;
     case "reporte": {
       const r = reporte(p.d, mesActual());
@@ -374,26 +446,3 @@ function FlujoFoto({ slug, piezas, subirFotos, avisar, cerrar }: { slug?: string
 }
 
 /** Achica una foto antes de mandarla (más rápido y liviano). */
-export async function achicarFoto(archivo: Blob, lado: number): Promise<Blob> {
-  const url = URL.createObjectURL(archivo);
-  try {
-    const im = new Image();
-    im.src = url;
-    await im.decode();
-    const k = Math.min(1, lado / Math.max(im.naturalWidth, im.naturalHeight));
-    const cv = document.createElement("canvas");
-    cv.width = Math.round(im.naturalWidth * k); cv.height = Math.round(im.naturalHeight * k);
-    const cx = cv.getContext("2d")!;
-    cx.imageSmoothingQuality = "high";
-    cx.drawImage(im, 0, 0, cv.width, cv.height);
-    const hacer = (t: string, q: number) => new Promise<Blob | null>((r) => cv.toBlob(r, t, q));
-    let b = await hacer("image/webp", 0.86);
-    if (!b || b.type !== "image/webp") b = await hacer("image/jpeg", 0.88);
-    if (!b) throw new Error("No pude leer esa foto. Probá con otra.");
-    return b;
-  } catch (e) {
-    throw e instanceof Error && e.message.startsWith("No pude") ? e : new Error("No pude leer esa foto. Probá con otra.");
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}

@@ -8,6 +8,7 @@ import {
   type Arranque, type InfoAnuncios, type Post, type Promo,
 } from "@/lib/promo";
 import Icon from "./Icon";
+import { avisarGuia } from "@/lib/guias";
 import PostIG from "./PostIG";
 
 type Publico = { texto: string; edad_min: number; edad_max: number; intereses: { id: string; name: string }[] };
@@ -363,7 +364,7 @@ export default function Anuncios({ ferias, piezas, arrancar, alArrancar, avisar 
   useEffect(() => { cargar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (arrancar) { setVista("promo"); alArrancar(); } }, [arrancar, alArrancar]);
 
-  const terminar = (t: string) => { setVista(""); avisar(t); cargar(); };
+  const terminar = (t: string) => { setVista(""); avisar(t); cargar(); avisarGuia("anuncio"); };
 
   return (
     <section className="pn-seccion">
@@ -378,8 +379,8 @@ export default function Anuncios({ ferias, piezas, arrancar, alArrancar, avisar 
       {!vista && (
         <>
           <div className="pn-acciones">
-            <button className="pn-accion" onClick={() => setVista("promo")}><span className="pn-accion-ico"><Icon n="megafono" s={26} /></span><span><b>Promocionar</b><small>Un post o una historia</small></span><Icon n="flecha" s={20} /></button>
-            <button className="pn-accion" onClick={() => setVista("publicar")}><span className="pn-accion-ico is-insta"><Icon n="insta" s={26} /></span><span><b>Publicar en Instagram</b><small>Post o historia con texto hecho por IA</small></span><Icon n="flecha" s={20} /></button>
+            <button className="pn-accion" data-guia="promocionar" onClick={() => setVista("promo")}><span className="pn-accion-ico"><Icon n="megafono" s={26} /></span><span><b>Promocionar</b><small>Un post o una historia</small></span><Icon n="flecha" s={20} /></button>
+            <button className="pn-accion" data-guia="publicar" onClick={() => setVista("publicar")}><span className="pn-accion-ico is-insta"><Icon n="insta" s={26} /></span><span><b>Publicar en Instagram</b><small>Post o historia con texto hecho por IA</small></span><Icon n="flecha" s={20} /></button>
           </div>
 
           {info?.conectado && (

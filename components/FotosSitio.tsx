@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import type { Datos, Pieza } from "@/lib/asistente";
-import { achicarFoto } from "./Chat";
+import { achicarFoto } from "./achicar";
 import Icon from "./Icon";
+import { avisarGuia } from "@/lib/guias";
 
 /**
  * Fotos de la página web que Andrea puede cambiar desde el panel.
@@ -40,6 +41,7 @@ export default function FotosSitio({ d, piezas, avisar, refrescar }: {
       await refrescar();
       avisar(ok);
       setEscoger(false);
+      avisarGuia("sitio");
     } catch (e) { avisar((e as Error).message, true); } finally { setOcupado(""); }
   }
   const json = (b: object, ok: string) => mandar(JSON.stringify({ lugar: "ventana", ...b }), true, ok);
@@ -63,14 +65,14 @@ export default function FotosSitio({ d, piezas, avisar, refrescar }: {
 
   return (
     <div className="pn-tarjeta si-tarjeta">
-      <button className="si-cabeza" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}>
+      <button className="si-cabeza" data-guia="sitio" onClick={() => setAbierto(!abierto)} aria-expanded={abierto}>
         <img src={foto} alt="" style={{ objectPosition: ENCUADRE[pos] }} />
         <span><b>Fotos de la página web</b><small>Cambiá la foto grande del inicio</small></span>
         <Icon n="flecha" s={20} />
       </button>
 
       {abierto && (
-        <div className="si-cuerpo">
+        <div className="si-cuerpo" data-guia="sitio-cuerpo">
           <p className="pn-nota">Es la foto que aparece con «{FRASE}». Así se ve:</p>
           <div className="si-vistas">
             <figure className="si-cel">
@@ -84,7 +86,7 @@ export default function FotosSitio({ d, piezas, avisar, refrescar }: {
           </div>
 
           <p className="pn-etq">¿Qué parte de la foto se ve?</p>
-          <div className="pn-seg">
+          <div className="pn-seg" data-guia="sitio-pos">
             {(["arriba", "centro", "abajo"] as const).map((k) => (
               <button key={k} className={pos === k ? "is-on" : ""} disabled={!!ocupado} onClick={() => k !== pos && (setOcupado("Guardando…"), json({ base: actual?.url ?? ORIGINAL, pos: k }, "Listo, ya cambié qué parte se ve."))}>
                 {k === "arriba" ? "Arriba" : k === "centro" ? "Centro" : "Abajo"}

@@ -3,6 +3,7 @@
 // devuelve una "tarjeta" que el chat dibuja: fotos para escoger, categorías, un botón para ir a una sección…
 // Nunca guarda nada por su cuenta: todo pasa por un "Sí" de Andrea.
 
+import type { Tarea } from "./guias";
 import {
   buscarFeria, buscarPieza, categoriasDe, entender, fmt, monto, norm, resumenMes,
   type Accion, type Datos, type Pieza, type Sentido, type TipoCambio,
@@ -21,7 +22,7 @@ export type Tarjeta =
   | { tipo: "rehacer"; slug: string; texto?: string }
   | { tipo: "producto"; borrador: BorradorPieza }
   | { tipo: "feria"; borrador: BorradorFeria }
-  | { tipo: "ir"; seccion: Seccion; boton: string }
+  | { tipo: "ir"; seccion: Seccion; boton: string; tarea?: Tarea; slug?: string; feria?: string }
   | { tipo: "resumen" }
   | { tipo: "reporte" }
   | { tipo: "opciones"; ops: string[] };
@@ -123,7 +124,7 @@ export function pensarLocal(texto: string, piezas: Pieza[], d: Datos, tc: TipoCa
     if (f && !/^\s*(la|esa|una)?\s*feria\s*$/.test(n)) {
       return { respuesta: `¿Borro ${f.nombre}? Se quita de la página; lo que vendiste ahí queda anotado.`, acciones: [{ id: uid(), tipo: "borrar_feria", feria: f.id, nombre: f.nombre }] };
     }
-    return { respuesta: "Las ferias se borran en la pestaña Ferias: tocás la feria y abajo dice «Borrar feria».", acciones: [], tarjeta: { tipo: "ir", seccion: "ferias", boton: "Ir a Ferias" } };
+    return { respuesta: "Las ferias se borran en la pestaña Ferias: tocás la feria y abajo dice «Borrar feria».", acciones: [], tarjeta: { tipo: "ir", seccion: "ferias", boton: "Llevame a borrarla", tarea: "borrar_feria" } };
   }
 
   // ¿Dónde está…? / llevame a…
