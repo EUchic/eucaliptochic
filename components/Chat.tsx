@@ -13,7 +13,7 @@ import { FichaFeria } from "./FeriasPanel";
 import { callar, desbloquear, hablar } from "./hablar";
 import Icon from "./Icon";
 import Revision from "./Revision";
-import { FichaProducto } from "./Tienda";
+import { FichaProducto, RehacerFoto } from "./Tienda";
 import { Escuchando, useVoz } from "./Voz";
 
 export type Mensaje = { id: string; de: "ella" | "asis"; texto: string; tarjeta?: Tarjeta; hecho?: boolean; nota?: string; motor?: string };
@@ -22,6 +22,7 @@ type Props = {
   d: Datos; piezas: Pieza[]; colecciones: string[]; tipos: string[]; tc: TipoCambio; enLinea: boolean;
   guardar: G; irA: (s: Seccion) => void; subirFotos: (p: Pieza, f: File[]) => Promise<boolean>;
   avisar: (m: string, malo?: boolean) => void; clave: string; vozOn: boolean; preguntas: Pregunta[];
+  refrescar: () => Promise<void>;
 };
 const nid = () => crypto.randomUUID();
 
@@ -211,6 +212,17 @@ function TarjetaVista(p: VistaProps) {
     case "producto": return <div className="ch-tarjeta"><FichaProducto inicial={t.borrador} piezas={p.piezas} colecciones={p.colecciones} tipos={p.tipos} guardar={p.guardar} subir={p.subirFotos} listo={(x) => p.cerrar("Se guardó el producto.", x)} cancelar={() => p.cerrar("Andrea canceló el producto.", "Listo, no guardé nada.")} /></div>;
     case "feria": return <div className="ch-tarjeta"><FichaFeria inicial={t.borrador} guardar={p.guardar} listo={(f) => p.cerrar(`Se anotó la feria ${f.nombre}.`, `¡Listo! ${f.nombre} ya está anotada. ¿La promocionamos unos días antes?`)} cancelar={() => p.cerrar("Andrea canceló la feria.", "Listo, no anoté nada.")} /></div>;
     case "foto": return <FlujoFoto slug={t.slug} piezas={p.piezas} subirFotos={p.subirFotos} avisar={p.avisar} cerrar={p.cerrar} />;
+    case "rehacer": {
+      const pz = p.piezas.find((x) => x.slug === t.slug);
+      if (!pz) return null;
+      if (!p.enLinea) return <p className="ch-tarjeta pn-nota">Para rehacer la foto, el panel tiene que estar conectado.</p>;
+      return (
+        <div className="ch-tarjeta">
+          <RehacerFoto p={pz} inicial={t.texto} avisar={p.avisar} refrescar={p.refrescar}
+            cerrar={(ok) => p.cerrar(ok ? `Se rehízo la foto de IA de ${pz.nombre}.` : "Andrea no quiso rehacer la foto.", ok ? `¡Listo! La foto nueva de ${pz.nombre} está en Tienda, arriba en «Fotos nuevas hechas con IA». Si te gusta, la ponés de portada.` : "Listo, no rehice nada.")} />
+        </div>
+      );
+    }
   }
 }
 

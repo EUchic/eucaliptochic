@@ -6,7 +6,7 @@ import { VACIO, type Accion, type Datos, type Feria, type Mov, type Pieza } from
 // - Lectura pública del catálogo: con la llave publicable (es pública por diseño; solo puede llamar catalogo_publico()).
 // - Panel: con la llave secreta SUPABASE_SECRET_KEY, que vive solo en Vercel. Las tablas no aceptan nada más.
 
-const URL_BASE = (process.env.SUPABASE_URL || "https://bfeyxeabulbuxsgacnpv.supabase.co").replace(/\/$/, "");
+export const URL_BASE = (process.env.SUPABASE_URL || "https://bfeyxeabulbuxsgacnpv.supabase.co").replace(/\/$/, "");
 const PUBLICA = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_myw_WA8jFAFt9RvFoPY6OQ_vFgvB8co";
 const SECRETA = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
@@ -65,7 +65,7 @@ export async function estadoPanel(): Promise<{ piezas: Pieza[]; colecciones: str
   return {
     piezas: e.piezas.map((p) => ({
       ...p, precio: Number(p.precio), foto: p.foto ? img(p.foto, 300) : "", fotos: Number(p.fotos),
-      lista: (p.lista ?? []).map((f) => ({ id: f.id, url: img(f.url, 300) })),
+      lista: (p.lista ?? []).map((f) => ({ id: f.id, url: img(f.url, 300), base: f.url, ia: !!(f as { ia?: boolean }).ia })),
       propuesta: p.propuesta ? { id: p.propuesta.id, url: img(p.propuesta.url, 800), grande: img(p.propuesta.url, 1600) } : null,
       tallas: p.tallas ?? [], descripcion: p.descripcion ?? null,
     })),
@@ -163,8 +163,30 @@ export const ajustes = {
 export async function piezaConFotos(slug: string) {
   const [p] = await rest<{ id: string; slug: string; nombre: string; tipo: string; descripcion: string | null }[]>(`piezas?select=id,slug,nombre,tipo,descripcion&slug=eq.${encodeURIComponent(slug)}&limit=1`);
   if (!p) return null;
-  const fotos = await rest<{ url: string; estado: string }[]>(`fotos?select=url,estado&pieza_id=eq.${p.id}&estado=neq.propuesta&order=orden.asc,creado.asc&limit=4`);
-  return { ...p, fotos: fotos.map((f) => f.url) };
+  // La referencia es la foto ORIGINAL de portada (aunque ya esté escondida de la tienda); si no hay, la primera que haya.
+  const fotos = await rest<{ id: string; url: string; origen: string }[]>(`fotos?select=id,url,origen&pieza_id=eq.${p.id}&estado=neq.propuesta&order=orden.asc,creado.asc&limit=20`);
+  const ref = fotos.find((f) => f.origen !== "ia") ?? fotos[0];
+  return { ...p, fotos: ref ? [ref.url] : [], base: ref?.origen !== "ia" ? ref?.id ?? null : null };
+}
+
+/** Anota en qué foto original se basó una foto de IA (al aprobarla, esa original se esconde de la tienda). */
+export const marcarBase = (id: string, base: string) =>
+  rest<null>(`fotos?id=eq.${id}`, { metodo: "PATCH", cuerpo: { base }, prefer: "return=minimal" });
+
+/** Al rehacer una foto de IA, la propuesta anterior (sin aprobar) ya no sirve. */
+export const borrarPropuestasViejas = (piezaId: string, menos: string) =>
+  rest<null>(`fotos?pieza_id=eq.${piezaId}&estado=eq.propuesta&id=neq.${menos}`, { metodo: "DELETE", prefer: "return=minimal" });
+
+export type Sitio = { ventana?: { url: string; pos?: "arriba" | "centro" | "abajo" } };
+/** Fotos de la página que Andrea cambia desde el panel (la tienda las lee con caché). */
+export async function sitioPublico(): Promise<Sitio> {
+  if (!SECRETA) return {};
+  try {
+    const r = await fetch(`${URL_BASE}/rest/v1/ajustes?clave=eq.panel_sitio&select=valor`, { headers: cabeceras(SECRETA), next: { revalidate: 900, tags: ["sitio"] }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return {};
+    const j = (await r.json()) as { valor: Sitio }[];
+    return j[0]?.valor ?? {};
+  } catch { return {}; }
 }
 
 export const categoriasPropias = () => rest<{ nombre: string; sentido: "ingreso" | "gasto" }[]>("categorias?select=nombre,sentido").catch(() => []);

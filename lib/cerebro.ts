@@ -18,6 +18,7 @@ export type Tarjeta =
   | { tipo: "posts"; que?: "post" | "story" }
   | { tipo: "publicar"; caption?: string; que?: "post" | "story" }
   | { tipo: "foto"; slug?: string }
+  | { tipo: "rehacer"; slug: string; texto?: string }
   | { tipo: "producto"; borrador: BorradorPieza }
   | { tipo: "feria"; borrador: BorradorFeria }
   | { tipo: "ir"; seccion: Seccion; boton: string }

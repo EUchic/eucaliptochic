@@ -579,3 +579,34 @@ html.teclado .ch-mic, html.teclado .ch-enviar { width: 52px; height: 52px; }
 @media (prefers-reduced-motion: reduce) {
   .pn-cuerpo *, .pn-cuerpo *::before, .pn-cuerpo *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
+
+/* ── Rehacer foto de IA («tiene un error») ── */
+.ti-rehacer { display: grid; gap: 12px; padding: 14px; border-radius: 16px; background: var(--fondo); }
+.ti-rehacer .pn-chips button { font-size: 15px; }
+
+/* ── Fotos de la página web ── */
+.si-tarjeta { display: grid; gap: 0; }
+.si-cabeza { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; }
+.si-cabeza img { width: 62px; height: 62px; border-radius: 12px; object-fit: cover; flex: none; }
+.si-cabeza span { flex: 1; min-width: 0; display: grid; }
+.si-cabeza b { font-size: 17px; }
+.si-cabeza small { font-size: 14px; color: var(--tinta-2); }
+.si-cabeza > svg { color: var(--tinta-3); transition: transform 0.2s; }
+.si-cabeza[aria-expanded="true"] > svg { transform: rotate(90deg); }
+.si-cuerpo { display: grid; gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 0.5px solid var(--linea); }
+.si-vistas { display: grid; grid-template-columns: 0.62fr 1.38fr; gap: 12px; align-items: end; }
+.si-vistas figure { display: grid; gap: 6px; }
+.si-vistas figure > div { position: relative; overflow: hidden; border-radius: 14px; background: var(--salvia-claro); box-shadow: 0 0 0 0.5px var(--linea); }
+.si-cel > div { aspect-ratio: 9 / 19; border-radius: 18px !important; }
+.si-compu > div { aspect-ratio: 16 / 10; }
+.si-vistas img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.si-vistas figure > div::after { content: ""; position: absolute; inset: 45% 0 0; background: linear-gradient(transparent, rgba(31, 42, 37, 0.55)); }
+.si-vistas p { position: absolute; left: 8%; right: 8%; bottom: 7%; z-index: 1; color: #fff; font: 400 13px/1.05 var(--titulo); letter-spacing: -0.01em; }
+.si-compu p { font-size: 17px; max-width: 12ch; }
+.si-vistas figcaption { font-size: 13px; font-weight: 600; color: var(--tinta-2); text-align: center; }
+.si-rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.si-rejilla button { display: grid; gap: 4px; width: 100%; text-align: left; }
+.si-rejilla img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 12px; background: var(--relleno); }
+.si-rejilla button[aria-pressed="true"] img { box-shadow: 0 0 0 3px var(--bosque); }
+.si-rejilla span { font-size: 13px; font-weight: 600; color: var(--tinta-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pn-btn.is-ocupado { opacity: 0.6; pointer-events: none; }

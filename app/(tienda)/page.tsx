@@ -11,13 +11,14 @@ import Rail from "@/components/Rail";
 import Reveal, { Words } from "@/components/Reveal";
 import { colones, facets, img, srcSet, WHATSAPP } from "@/lib/catalog";
 import { getCatalog } from "@/lib/tienda";
-import { feriasPublicas } from "@/lib/db";
+import { feriasPublicas, sitioPublico } from "@/lib/db";
 import { cuandoFeria, fechaFeria } from "@/lib/ferias";
 
 export const revalidate = 900;
 
 export default async function Home() {
-  const [cat, prox] = await Promise.all([getCatalog(), feriasPublicas().then((f) => f[0]).catch(() => undefined)]);
+  const [cat, prox, sitio] = await Promise.all([getCatalog(), feriasPublicas().then((f) => f[0]).catch(() => undefined), sitioPublico()]);
+  const ventana = sitio.ventana;
   if (!cat.length) {
     return (
       <section className="wrap vacio pag">
@@ -68,9 +69,10 @@ export default async function Home() {
       </div>
 
       <Ventana
-        foto={fotoSrc("andrea-cafe-eucalipto")}
-        set={fotoSet("andrea-cafe-eucalipto")}
-        alt="Andrea con blusa y capri café junto a un ramo de eucalipto"
+        foto={ventana ? img(ventana.url, 1600) : fotoSrc("andrea-cafe-eucalipto")}
+        set={ventana ? srcSet(ventana.url) : fotoSet("andrea-cafe-eucalipto")}
+        pos={ventana?.pos}
+        alt={ventana ? "Andrea con ropa de Eucalipto Chic" : "Andrea con blusa y capri café junto a un ramo de eucalipto"}
         frase="Ropa cómoda, hecha para moverse con vos."
         firma="By Andrea Bermúdez"
       />

@@ -204,7 +204,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
             )}
             <Chat
               d={d} piezas={todas} colecciones={todasColecciones} tipos={tipos} tc={tc} enLinea={enLinea} clave={KEY + "-chat"}
-              guardar={(a, m = "") => guardar(a, m)} irA={irA} avisar={avisar} subirFotos={subirFotos} vozOn={vozOn} preguntas={preguntas}
+              guardar={(a, m = "") => guardar(a, m)} irA={irA} avisar={avisar} subirFotos={subirFotos} vozOn={vozOn} preguntas={preguntas} refrescar={refrescar}
             />
           </>
         )}

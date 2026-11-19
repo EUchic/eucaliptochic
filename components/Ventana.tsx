@@ -9,7 +9,10 @@ import { useEffect, useRef } from "react";
 const RATIO = 600 / 999; // alto / ancho de /logo/eu.png
 const STEM = 0.0445; // centro del trazo vertical de la E, en fracción del ancho del logo
 
-export default function Ventana({ foto, set, alt, frase, firma }: { foto: string; set: string; alt: string; frase: string; firma: string }) {
+const POS = { arriba: "center 12%", centro: "center 35%", abajo: "center 78%" } as const;
+
+export default function Ventana({ foto, set, alt, frase, firma, pos }: { foto: string; set: string; alt: string; frase: string; firma: string; pos?: keyof typeof POS }) {
+  const encuadre = pos ? { objectPosition: POS[pos] } : undefined;
   const ref = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -44,10 +47,10 @@ export default function Ventana({ foto, set, alt, frase, firma }: { foto: string
     <section className="ven" ref={ref} aria-label={frase}>
       <div className="ven-pin">
         <div className="ven-foto">
-          <img src={foto} srcSet={set} sizes="100vw" alt={alt} loading="lazy" />
+          <img src={foto} srcSet={set} sizes="100vw" alt={alt} loading="lazy" style={encuadre} />
         </div>
         <div className="ven-lleno" aria-hidden>
-          <img src={foto} srcSet={set} sizes="100vw" alt="" loading="lazy" />
+          <img src={foto} srcSet={set} sizes="100vw" alt="" loading="lazy" style={encuadre} />
         </div>
         <p className="ven-arriba" aria-hidden>Eucalipto Chic</p>
         <div className="ven-txt">

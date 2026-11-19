@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { img } from "@/lib/catalog";
-import { guardarAccion, piezaConFotos, subirFoto } from "@/lib/db";
+import { borrarPropuestasViejas, guardarAccion, marcarBase, piezaConFotos, subirFoto } from "@/lib/db";
 import { no, permitido, refrescarTienda } from "@/lib/panel";
 import { idSeguro } from "@/lib/validar";
 
@@ -15,7 +15,7 @@ const ESTILO = process.env.ESTILO_FOTOS ||
   "Model: an elegant Latina woman in her late 30s with a natural, warm look, light makeup, hair neatly styled, relaxed confident pose, standing, full outfit visible from head to knees or feet. " +
   "Neutral, minimal styling: plain shoes and no extra accessories unless they appear in the reference photos.";
 
-const pedidoDe = (p: { nombre: string; tipo: string; descripcion: string | null }) => [
+const pedidoDe = (p: { nombre: string; tipo: string; descripcion: string | null }, correccion = "") => [
   "Create a professional e-commerce studio product photo for the online boutique Eucalipto Chic (women's clothing, designed in Costa Rica).",
   `The product is "${p.nombre}" (${p.tipo}).${p.descripcion ? " Description: " + p.descripcion.slice(0, 300) : ""}`,
   "The reference photo shows the real garment. Reproduce it EXACTLY: same color and shade, cut, silhouette, length, neckline, sleeves, print, fabric texture and drape, buttons, ties and every detail. Do not redesign it and do not change its color.",
@@ -23,6 +23,7 @@ const pedidoDe = (p: { nombre: string; tipo: string; descripcion: string | null 
   "Show it worn by a model. " + ESTILO,
   "Lighting: soft, even, diffused studio light; true-to-life colors; sharp focus on the fabric. Vertical 2:3 framing with the garment centered and fully visible.",
   "Photorealistic. No text, no logos, no watermarks, no borders.",
+  correccion ? `IMPORTANT: a previous attempt had a mistake. The shop owner says (in Spanish): «${correccion}». Fix exactly that, and keep everything else faithful to the reference photo.` : "",
 ].join(" ");
 
 async function bajar(url: string, origen: string) {
@@ -39,7 +40,8 @@ export async function POST(req: Request) {
   if (bloqueo) return bloqueo;
   const key = process.env.OPENAI_API_KEY;
   if (!key) return no("Las fotos con IA se activan con OpenAI.", 501);
-  const b = (await req.json().catch(() => null)) as { slug?: string; calidad?: string } | null;
+  const b = (await req.json().catch(() => null)) as { slug?: string; calidad?: string; correccion?: string } | null;
+  const correccion = String(b?.correccion ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 400);
   const slug = String(b?.slug ?? "");
   if (!/^[a-z0-9-]{1,140}$/.test(slug)) return no("No encontré esa pieza.", 400);
   const p = await piezaConFotos(slug);
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
     const refs = [await bajar(p.fotos[0], origen)];
     const fd = new FormData();
     fd.set("model", process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-sunburst");
-    fd.set("prompt", pedidoDe(p));
+    fd.set("prompt", pedidoDe(p, correccion));
     refs.forEach((r, i) => fd.append("image[]", r, `ref${i}.${r.type.split("/")[1] || "webp"}`));
     fd.set("size", "1024x1536");
     fd.set("quality", b?.calidad === "medium" ? "medium" : "high");
@@ -75,6 +77,8 @@ export async function POST(req: Request) {
     const url = await subirFoto(`ia/${slug}/${id}-1600.webp`, new Uint8Array(grande).buffer as ArrayBuffer, "image/webp");
     await subirFoto(`ia/${slug}/${id}-800.webp`, new Uint8Array(chica).buffer as ArrayBuffer, "image/webp");
     await guardarAccion({ id, tipo: "foto_propuesta", slug, url });
+    if (p.base) await marcarBase(id, p.base).catch(() => {});
+    await borrarPropuestasViejas(p.id, id).catch(() => {});
     try { refrescarTienda(); } catch {}
     return NextResponse.json({ ok: true, slug, url });
   } catch (e) {

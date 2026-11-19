@@ -37,7 +37,7 @@ export type Accion =
 export type Talla = { talla: string; existencias: number | null };
 export type Pieza = {
   slug: string; nombre: string; precio: number; tipo: string; coleccion: string; foto: string; fotos: number; oculta?: boolean;
-  lista?: { id: string; url: string }[]; descripcion?: string | null; tallas?: Talla[]; propuesta?: { id: string; url: string; grande?: string } | null;
+  lista?: { id: string; url: string; base?: string; ia?: boolean }[]; descripcion?: string | null; tallas?: Talla[]; propuesta?: { id: string; url: string; grande?: string } | null;
 };
 export type Persona = { nombre: string; rol?: string | null; categoria?: string | null; notas?: string | null; veces: number; ultimo?: string | null };
 export type Mov = Extract<Accion, { tipo: "movimiento" }> & { crc: number; anulado?: boolean; creado: string };

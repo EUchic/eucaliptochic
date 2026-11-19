@@ -21,5 +21,6 @@ export async function permitido(req: Request) {
 export function refrescarTienda() {
   revalidateTag("catalogo");
   revalidateTag("ferias");
+  revalidateTag("sitio");
   revalidatePath("/", "layout");
 }

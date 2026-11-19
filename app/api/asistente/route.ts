@@ -71,6 +71,7 @@ function herramientas(cats: string[]) {
       que: { type: "string", enum: ["post", "story"] }, idea: { type: "string", description: "De qué quiere que hable el texto, si lo dijo" },
     }, ["que"]),
     fn("mejorar_foto", "Abre el paso para subir o escoger una foto de una pieza y mejorarla con IA.", { slug: { type: "string" } }),
+    fn("rehacer_foto_ia", "Cuando Andrea dice que la foto de producto hecha con IA de una pieza tiene un error (color, largo, mangas, detalles…). Muestra el cuadro para decir qué está mal y hacerla otra vez.", { slug: { type: "string" }, que_esta_mal: { type: "string", description: "Lo que está mal, con las palabras de Andrea, si ya lo dijo" } }, ["slug"]),
     fn("ir_a", "Lleva a Andrea a una sección del panel.", { seccion: { type: "string", enum: SECCIONES }, boton: { type: "string", description: "Texto corto del botón" } }, ["seccion", "boton"]),
     fn("mostrar_resumen", "Muestra la etiqueta con lo que entró, salió y le queda este mes."),
     fn("mostrar_reporte", "Muestra el reporte del mes con el análisis y recomendaciones."),
@@ -290,6 +291,12 @@ function convertir(nombre: string | undefined, a: Record<string, unknown>, pieza
     case "mejorar_foto": {
       const p = pieza(a.slug);
       return [{ tarjeta: { tipo: "foto", slug: p?.slug }, texto: p ? `Subí la foto de ${p.nombre} y la mejoramos.` : "¿De cuál pieza es la foto?", p: 2 }];
+    }
+    case "rehacer_foto_ia": {
+      const p = pieza(a.slug);
+      return p
+        ? [{ tarjeta: { tipo: "rehacer", slug: p.slug, texto: txt(a.que_esta_mal, 400) ?? undefined }, texto: `Contame qué está mal en la foto de ${p.nombre} y la hago otra vez.`, p: 2 }]
+        : [{ tarjeta: { tipo: "ir", seccion: "tienda", boton: "Escoger la pieza en Tienda" }, texto: "¿De cuál pieza es la foto que salió mal? También la podés buscar en Tienda.", p: 5 }];
     }
     case "ir_a": {
       const s = SECCIONES.includes(a.seccion as Seccion) ? (a.seccion as Seccion) : null;

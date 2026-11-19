@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { fmt, norm, type Accion, type Datos, type Pieza, type Talla } from "@/lib/asistente";
 import type { BorradorPieza } from "@/lib/cerebro";
 import Icon from "./Icon";
+import FotosSitio from "./FotosSitio";
 
 type G = (a: Accion[], msg?: string) => Promise<boolean>;
 type Subir = (p: Pieza, f: File[]) => Promise<boolean>;
@@ -103,10 +104,46 @@ export function FichaProducto({ inicial, piezas, colecciones, tipos, guardar, su
   );
 }
 
+type Avisar = (m: string, malo?: boolean) => void;
+const ERRORES: [string, string][] = [["Color", "El color no es igual"], ["Largo", "Cambió el largo"], ["Mangas", "Las mangas están mal"], ["Detalles", "Le faltan o sobran detalles"], ["Tela", "Cambió la tela o el estampado"], ["La modelo", "La modelo o la pose"]];
+
+/** «Tiene un error»: Andrea dice qué está mal y la IA hace la foto otra vez, corrigiendo eso. */
+export function RehacerFoto({ p, inicial, avisar, refrescar, cerrar }: { p: Pieza; inicial?: string; avisar: Avisar; refrescar: () => Promise<void>; cerrar: (hecho?: boolean) => void }) {
+  const [txt, setTxt] = useState(inicial ?? "");
+  const [haciendo, setHaciendo] = useState(false);
+  async function rehacer() {
+    setHaciendo(true);
+    try {
+      const r = await fetch("/api/fotos/estudio", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug: p.slug, correccion: txt.trim() }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401) { location.href = "/admin/entrar"; return; }
+      if (!r.ok) throw new Error(j.error || "No se pudo rehacer la foto.");
+      await refrescar();
+      avisar("¡Lista! Revisá la foto nueva en «Fotos nuevas hechas con IA».");
+      cerrar(true);
+    } catch (e) { avisar((e as Error).message, true); setHaciendo(false); }
+  }
+  return (
+    <div className="ti-rehacer">
+      <p className="pn-etq">¿Qué está mal en la foto de {p.nombre}?</p>
+      <div className="pn-chips">
+        {ERRORES.map(([c, e]) => <button type="button" key={c} disabled={haciendo} className={txt.includes(e) ? "is-on" : ""} onClick={() => setTxt((t) => (t.includes(e) ? t : t.trim() ? `${t.trim().replace(/[.,:]$/, "")}. ${e}: ` : `${e}: `))}>{c}</button>)}
+      </div>
+      <textarea rows={3} maxLength={400} value={txt} disabled={haciendo} onChange={(e) => setTxt(e.target.value)} placeholder="Ej.: la blusa es azul más oscuro y las mangas llegan al codo" aria-label="Qué está mal" />
+      <p className="pn-nota">Entre más claro, mejor sale. La foto de ahora no se toca hasta que aprobés la nueva.</p>
+      <div className="pn-botones is-columna">
+        <button className="pn-btn is-grande" disabled={txt.trim().length < 4 || haciendo} onClick={rehacer}><Icon n="chispa" s={22} />{haciendo ? "Rehaciendo la foto… (1 a 2 minutos)" : "Rehacer la foto"}</button>
+        <button className="pn-btn is-gris" disabled={haciendo} onClick={() => cerrar()}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 /** Fotos de producto hechas con IA que esperan el sí de Andrea. */
-function FotosIA({ piezas, guardar }: { piezas: Pieza[]; guardar: G }) {
+function FotosIA({ piezas, guardar, avisar, refrescar }: { piezas: Pieza[]; guardar: G; avisar: Avisar; refrescar: () => Promise<void> }) {
   const lista = piezas.filter((p) => p.propuesta);
   const [i, setI] = useState(0);
+  const [error, setError] = useState(false);
   if (!lista.length) return null;
   const p = lista[Math.min(i, lista.length - 1)];
   const prop = p.propuesta!;
@@ -118,12 +155,17 @@ function FotosIA({ piezas, guardar }: { piezas: Pieza[]; guardar: G }) {
         <figure>{p.foto ? <img src={p.foto} alt="Foto actual" /> : <span className="ti-sinfoto"><Icon n="foto" s={26} /></span>}<figcaption>Ahora</figcaption></figure>
         <figure className="is-nueva"><a href={prop.grande ?? prop.url} target="_blank" rel="noopener"><img src={prop.url} alt="Foto nueva" /></a><figcaption>Nueva</figcaption></figure>
       </div>
-      <p className="pn-nota">Fijate que la prenda sea igualita: color, largo, mangas y detalles. Tocá la nueva para verla grande.</p>
-      <div className="pn-botones">
-        <button className="pn-btn is-grande" onClick={() => guardar([{ id: nid(), tipo: "foto_aprobar", foto_id: prop.id, slug: p.slug, nombre: p.nombre }], `Listo, la foto nueva ya es la portada de ${p.nombre}.`)}><Icon n="check" s={22} />Usarla de portada</button>
-        <button className="pn-btn is-gris is-grande" onClick={() => guardar([{ id: nid(), tipo: "foto_descartar", foto_id: prop.id, slug: p.slug, nombre: p.nombre }], "Descartada.")}>No me gusta</button>
-      </div>
-      {lista.length > 1 && <button className="pn-txt" onClick={() => setI((i + 1) % lista.length)}>Ver la siguiente</button>}
+      {error ? <RehacerFoto key={prop.id} p={p} avisar={avisar} refrescar={refrescar} cerrar={() => setError(false)} /> : (
+        <>
+          <p className="pn-nota">Fijate que la prenda sea igualita: color, largo, mangas y detalles. Tocá la nueva para verla grande.</p>
+          <div className="pn-botones">
+            <button className="pn-btn is-grande" onClick={() => guardar([{ id: nid(), tipo: "foto_aprobar", foto_id: prop.id, slug: p.slug, nombre: p.nombre }], `Listo, la foto nueva ya es la portada de ${p.nombre}.`)}><Icon n="check" s={22} />Usarla de portada</button>
+            <button className="pn-btn is-gris is-grande" onClick={() => guardar([{ id: nid(), tipo: "foto_descartar", foto_id: prop.id, slug: p.slug, nombre: p.nombre }], "Descartada.")}>No me gusta</button>
+          </div>
+          <button className="pn-btn is-tinte" onClick={() => setError(true)}><Icon n="lapiz" s={20} />Tiene un error: decir qué y rehacerla</button>
+          {lista.length > 1 && <button className="pn-txt" onClick={() => setI((i + 1) % lista.length)}>Ver la siguiente</button>}
+        </>
+      )}
     </div>
   );
 }
@@ -133,7 +175,9 @@ function Detalle({ p, colecciones, guardar, subir, avisar, refrescar }: { p: Pie
   const [tallas, setTallas] = useState<Talla[]>(p.tallas ?? []);
   const [precio, setPrecio] = useState(p.precio ? String(p.precio) : "");
   const [haciendo, setHaciendo] = useState(false);
+  const [error, setError] = useState(false);
   const [seguro, setSeguro] = useState("");
+  const conIA = (p.lista ?? []).some((f) => f.ia);
   const cambioTallas = JSON.stringify(tallas) !== JSON.stringify(p.tallas ?? []);
   async function fotoIA() {
     setHaciendo(true);
@@ -151,7 +195,7 @@ function Detalle({ p, colecciones, guardar, subir, avisar, refrescar }: { p: Pie
         {(p.lista ?? []).map((f, i) => (
           <figure key={f.id}>
             <img src={f.url} alt="" loading="lazy" />
-            {i === 0 && <figcaption>Portada</figcaption>}
+            {(i === 0 || f.ia) && <figcaption>{[i === 0 ? "Portada" : "", f.ia ? "IA" : ""].filter(Boolean).join(" · ")}</figcaption>}
             {seguro === f.id
               ? <span className="ti-quitar-ok"><button onClick={() => guardar([{ id: nid(), tipo: "quitar_foto", foto_id: f.id, slug: p.slug, nombre: p.nombre }], "Foto quitada.")}>Quitar</button><button onClick={() => setSeguro("")}>No</button></span>
               : <button className="ti-quitar" aria-label="Quitar esta foto" onClick={() => setSeguro(f.id)}><Icon n="cerrar" s={16} /></button>}
@@ -162,9 +206,12 @@ function Detalle({ p, colecciones, guardar, subir, avisar, refrescar }: { p: Pie
           <Icon n={subiendo ? "reloj" : "mas"} s={24} /><span>{subiendo ? "Subiendo…" : "Foto"}</span>
         </label>
       </div>
-      {!p.propuesta && (p.lista?.length ?? 0) > 0 && (
-        <button className="pn-btn is-tinte" disabled={haciendo} onClick={fotoIA}><Icon n="chispa" s={22} />{haciendo ? "Haciendo la foto… (1 a 2 minutos)" : "Hacer foto de producto con IA"}</button>
-      )}
+      {p.propuesta ? <p className="pn-nota">Hay una foto nueva de IA esperando tu sí, arriba en «Fotos nuevas hechas con IA».</p>
+        : error ? <RehacerFoto p={p} avisar={avisar} refrescar={refrescar} cerrar={() => setError(false)} />
+        : conIA ? <button className="pn-btn is-tinte" onClick={() => setError(true)}><Icon n="lapiz" s={20} />La foto de IA tiene un error</button>
+        : (p.lista?.length ?? 0) > 0 && (
+          <button className="pn-btn is-tinte" disabled={haciendo} onClick={fotoIA}><Icon n="chispa" s={22} />{haciendo ? "Haciendo la foto… (1 a 2 minutos)" : "Hacer foto de producto con IA"}</button>
+        )}
 
       <div className="pn-grupo">
         <label className="pn-fila"><span>Precio</span><span className="pn-con-prefijo is-fila"><span>₡</span><input inputMode="numeric" value={precio} onChange={(e) => setPrecio(e.target.value.replace(/[^\d]/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " "))}
@@ -182,7 +229,7 @@ function Detalle({ p, colecciones, guardar, subir, avisar, refrescar }: { p: Pie
   );
 }
 
-export default function Tienda({ todas, colecciones, tipos, guardar, subir, fotos, abrir, avisar, refrescar }: {
+export default function Tienda({ todas, colecciones, tipos, guardar, subir, fotos, d, abrir, avisar, refrescar }: {
   todas: Pieza[]; colecciones: string[]; tipos: string[]; guardar: G; subir: Subir; fotos: FotoSuelta[]; d: Datos; abrir?: string | null;
   avisar: (m: string, malo?: boolean) => void; refrescar: () => Promise<void>;
 }) {
@@ -202,7 +249,8 @@ export default function Tienda({ todas, colecciones, tipos, guardar, subir, foto
         <div className="pn-tarjeta"><FichaProducto piezas={todas} colecciones={colecciones} tipos={tipos} guardar={guardar} subir={subir} listo={(t) => { setNueva(false); avisar(t); }} cancelar={() => setNueva(false)} /></div>
       ) : <button className="pn-btn is-grande" onClick={() => setNueva(true)}><Icon n="mas" s={24} />Meter un producto nuevo</button>}
 
-      <FotosIA piezas={todas} guardar={guardar} />
+      <FotosIA piezas={todas} guardar={guardar} avisar={avisar} refrescar={refrescar} />
+      <FotosSitio d={d} piezas={todas} avisar={avisar} refrescar={refrescar} />
 
       <label className="pn-buscar"><Icon n="buscar" s={22} /><input type="search" placeholder="Buscar una pieza" value={q} onChange={(e) => setQ(e.target.value)} /></label>
       <div className="pn-seg">

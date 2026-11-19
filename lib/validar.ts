@@ -126,7 +126,7 @@ export function validar(x: unknown, extra: Extra = {}): Accion {
     }
     case "ajuste": {
       const clave = String(a.clave ?? "");
-      if (!/^(panel_|analisis_)[a-z0-9_-]{1,60}$/.test(clave)) throw new Invalida("Ajuste no permitido.");
+      if (!/^(panel_|analisis_)[a-z0-9_-]{1,60}$/.test(clave) || clave === "panel_sitio") throw new Invalida("Ajuste no permitido.");
       const valor = a.valor ?? null;
       if (JSON.stringify(valor).length > 8000) throw new Invalida("Ese ajuste es muy grande.");
       return { id, tipo: "ajuste", clave, valor };
