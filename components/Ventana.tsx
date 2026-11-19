@@ -9,7 +9,7 @@ import { useEffect, useRef } from "react";
 const RATIO = 600 / 999; // alto / ancho de /logo/eu.png
 const STEM = 0.0445; // centro del trazo vertical de la E, en fracción del ancho del logo
 
-const POS = { arriba: "center 12%", centro: "center 35%", abajo: "center 78%" } as const;
+const POS = { arriba: "center 4%", centro: "center 35%", abajo: "center 78%" } as const;
 
 export default function Ventana({ foto, set, alt, frase, firma, pos }: { foto: string; set: string; alt: string; frase: string; firma: string; pos?: keyof typeof POS }) {
   const encuadre = pos ? { objectPosition: POS[pos] } : undefined;

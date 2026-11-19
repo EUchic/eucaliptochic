@@ -13,7 +13,7 @@ import Icon from "./Icon";
 type Pos = "arriba" | "centro" | "abajo";
 type Sitio = { ventana?: { url: string; pos?: Pos } };
 const ORIGINAL = "/fotos/andrea-cafe-eucalipto";
-const ENCUADRE: Record<Pos, string> = { arriba: "center 12%", centro: "center 35%", abajo: "center 78%" };
+const ENCUADRE: Record<Pos, string> = { arriba: "center 4%", centro: "center 35%", abajo: "center 78%" };
 const FRASE = "Ropa cómoda, hecha para moverse con vos.";
 
 const chica = (u: string) =>
