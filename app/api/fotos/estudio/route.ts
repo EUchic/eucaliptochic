@@ -18,7 +18,8 @@ const ESTILO = process.env.ESTILO_FOTOS ||
 const pedidoDe = (p: { nombre: string; tipo: string; descripcion: string | null }) => [
   "Create a professional e-commerce studio product photo for the online boutique Eucalipto Chic (women's clothing, designed in Costa Rica).",
   `The product is "${p.nombre}" (${p.tipo}).${p.descripcion ? " Description: " + p.descripcion.slice(0, 300) : ""}`,
-  "The reference photos show the real garment. Reproduce the garment EXACTLY: same cut, silhouette, length, neckline, sleeves, color, print, fabric texture, buttons, ties and every detail. Do not redesign or change it.",
+  "The reference photo shows the real garment. Reproduce it EXACTLY: same color and shade, cut, silhouette, length, neckline, sleeves, print, fabric texture and drape, buttons, ties and every detail. Do not redesign it and do not change its color.",
+  "Recreate the same outfit styling as in the reference photo (the same top and bottom pieces and the same belt if there is one), so a customer sees exactly what she would buy.",
   "Show it worn by a model. " + ESTILO,
   "Lighting: soft, even, diffused studio light; true-to-life colors; sharp focus on the fabric. Vertical 2:3 framing with the garment centered and fully visible.",
   "Photorealistic. No text, no logos, no watermarks, no borders.",
@@ -47,7 +48,8 @@ export async function POST(req: Request) {
 
   try {
     const origen = new URL(req.url).origin;
-    const refs = await Promise.all(p.fotos.slice(0, 2).map((u) => bajar(u, origen)));
+    // Solo la portada: con varias fotos la IA mezclaba colores de prendas distintas.
+    const refs = [await bajar(p.fotos[0], origen)];
     const fd = new FormData();
     fd.set("model", process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-sunburst");
     fd.set("prompt", pedidoDe(p));

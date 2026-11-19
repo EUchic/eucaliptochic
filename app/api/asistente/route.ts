@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { CATS, METODOS, hoy, type Accion, type Talla } from "@/lib/asistente";
+import { CATS, METODOS, describir, fmt, hoy, type Accion, type Talla } from "@/lib/asistente";
 import type { Movimiento, Seccion, Tarjeta } from "@/lib/cerebro";
 import { responses, textoDe } from "@/lib/ia";
 import { permitido } from "@/lib/panel";
@@ -97,11 +97,13 @@ export async function POST(req: Request) {
     "Sos la asistente personal de Andrea Bermúdez, dueña de Eucalipto Chic, una marca de ropa de mujer en Costa Rica. Le ayudás con la plata, la tienda en línea, las ferias e Instagram.",
     "Personalidad: cálida, tranquila, profesional y muy resolutiva, como una mano derecha de confianza. Hablás en español de Costa Rica con voseo, natural y con cariño, sin exagerar. Andrea casi siempre te habla por voz desde el celular y tus respuestas se leen en voz alta: respondé en 1 o 2 frases cortas, sin listas, sin emojis, sin símbolos raros, sin tecnicismos. Nunca digás que sos una IA ni hablés de herramientas.",
     "Tu trabajo es quitarle problemas, no dárselos: hacé las cosas vos con las herramientas, anticipá lo que va a ocupar y proponé el siguiente paso. Si algo sale raro, explicalo simple y ofrecé la solución.",
-    "Nunca inventés montos, precios, nombres, fechas ni piezas. Si falta algo esencial o lo que dijo se puede entender de dos formas, usá 'preguntar' con UNA pregunta corta y opciones para tocar. Si estás segura, no preguntés de más.",
+    "Nunca inventés montos, precios, nombres, fechas ni piezas. Si falta algo esencial o lo que dijo se puede entender de dos formas, usá 'preguntar' con UNA pregunta corta. Preguntá una sola cosa por vez y lo más importante primero (el monto antes que el nombre). Si estás segura, no preguntés de más.",
+    "Las opciones de 'preguntar' son respuestas reales que ella puede tocar: nombres que ya conocés, montos o fechas probables, categorías, 'No me acuerdo', 'Prefiero no decir'. Nunca pongás instrucciones como 'Decir el monto' o 'Decime el nombre': si la respuesta es libre (un nombre nuevo, un monto), ponés solo las opciones útiles y ella contesta hablando.",
+    "Si dice que vendió una pieza y no dice cuánto, usá el precio de la pieza; si la pieza no tiene precio, preguntá cuánto fue. En la nota (concepto) poné qué se vendió o pagó con sus palabras.",
     "Plata: usá registrar_movimientos (puede ser varios a la vez). Incluí siempre el nombre de la persona cuando lo diga. Si le pagó a una persona (costurera, planchado, mensajero, ayudante…) y no dijo a quién, preguntale el nombre ofreciendo las personas que ya conocés y 'Prefiero no decir'. Si una venta fue por SINPE o transferencia y no dijo de quién, preguntale de quién fue (con la opción 'No me acuerdo'); en ventas de feria no hace falta. Si la persona ya la conocés y tiene categoría de siempre, usala.",
     "Categorías: si un gasto no calza claramente en una categoría, usá 'desconocida' y el panel le pregunta y lo aprende. Respetá lo aprendido. Si no dice cómo pagó: SINPE. 'Datáfono' es el MiPos de BAC.",
     "Fechas: hoy es " + `${diaSemana} ${h}` + ". Entendé 'ayer', 'el sábado', 'el 15'. Montos en colones salvo que diga dólares; '45 mil' = 45000; 'un rojo' = 1000; 'una teja' = 100000.",
-    "Productos: si quiere meter un producto, llamá crear_producto con lo que ya dijo; la ficha le pide la foto, las tallas, cuántas hay de cada una y el precio. Si dice cuántas le quedan de algo, usá cambiar_tallas.",
+    "Productos: si quiere meter un producto, llamá crear_producto con todo lo que ya dijo (en la descripción poné tela, color y detalles que mencionó); la ficha le pide la foto, las tallas, cuántas hay de cada una y el precio. Si dice cuántas le quedan de algo, usá cambiar_tallas.",
     "Ferias: crear_feria abre la ficha con el buscador de lugares; pasá el lugar tal como lo dijo. Instagram: 'promocionar' para dar alcance a un post o historia, 'publicar_en_instagram' para subir algo nuevo.",
     "Memoria: si te cuenta algo estable que conviene recordar (quién es alguien, cuánto cobra un proveedor, costumbres), guardalo con guardar_persona o recordar. Usá tu memoria para responder mejor.",
     "Preguntas sobre plata o el negocio: respondé con los números de los movimientos y resúmenes de abajo, exactos y en colones. Si no tenés el dato, decilo y ofrecé anotarlo.",
@@ -154,7 +156,7 @@ export async function POST(req: Request) {
     else if (acciones.length) tarjeta = { tipo: "confirmar", acciones };
     const dicho = textoDe(j).trim();
     const respuesta = (principal?.t.tipo === "opciones" ? principal.texto : dicho) || porDefecto
-      || (acciones.length ? "Esto es lo que entendí. ¿Lo guardo?" : "Perdón, no te entendí bien. ¿Me lo decís de otra forma?");
+      || (acciones.length ? resumir(acciones) : "Perdón, no te entendí bien. ¿Me lo decís de otra forma?");
     return NextResponse.json({ motor: "openai", respuesta, acciones: tarjeta?.tipo === "confirmar" ? acciones : [], tarjeta });
   } catch (e) {
     console.error("[asistente]", e instanceof Error ? e.message : e);
@@ -163,6 +165,24 @@ export async function POST(req: Request) {
 }
 
 type Res = Accion | { tarjeta: Tarjeta; texto: string; p: number };
+
+const FORMA: Record<string, string> = { SINPE: "por SINPE", Efectivo: "en efectivo", "Datáfono": "por datáfono", Transferencia: "por transferencia", Tarjeta: "con tarjeta", ONVO: "por la web" };
+
+/** Lo que entendió, dicho como lo diría una persona (se lee en voz alta). */
+function resumir(acciones: Accion[]) {
+  const movs = acciones.filter((a): a is Movimiento => a.tipo === "movimiento");
+  const partes: string[] = [];
+  if (movs.length) {
+    const plata = (m: Movimiento) => (m.moneda === "USD" ? `$${m.monto}` : fmt(m.monto));
+    const frases = movs.map((m) => `${plata(m)} ${FORMA[m.metodo] ?? ""}${m.persona ? (m.sentido === "ingreso" ? " de " : " a ") + m.persona : ""}`.trim());
+    const lista = frases.length > 1 ? frases.slice(0, -1).join(", ") + " y " + frases.at(-1) : frases[0];
+    const cats = [...new Set(movs.map((m) => m.categoria))];
+    const verbo = movs.every((m) => m.sentido === "ingreso") ? "entraron" : movs.every((m) => m.sentido === "gasto") ? "salieron" : "se movieron";
+    partes.push(`Anoto que ${verbo} ${lista}${cats.length === 1 ? `, en ${cats[0]}` : ""}`);
+  }
+  for (const a of acciones.filter((a) => a.tipo !== "movimiento")) partes.push(describir(a));
+  return partes.join(". ") + ". ¿Lo guardo?";
+}
 
 /** Valida lo que propuso la IA: solo pasa lo que tiene sentido para la tienda. */
 function convertir(nombre: string | undefined, a: Record<string, unknown>, piezas: PiezaCtx[], ctx: Contexto): Res[] {
