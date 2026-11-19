@@ -8,6 +8,35 @@ import { callar, desbloquear } from "./hablar";
 // también para volver a escuchar sola (modo conversación).
 let ctxGlobal: AudioContext | null = null;
 
+function contexto() {
+  const AC = typeof window !== "undefined" ? window.AudioContext || (window as any).webkitAudioContext : null;
+  try { if (!ctxGlobal && AC) ctxGlobal = new AC(); ctxGlobal?.resume().catch(() => {}); } catch { ctxGlobal = null; }
+  return ctxGlobal;
+}
+
+/**
+ * Sonidito para que Andrea sepa cuándo hablar: dos notas que suben = «ya te escucho, hablá»;
+ * dos que bajan = «listo, ya lo mandé». Dura menos de medio segundo y se oye antes de grabar.
+ */
+export function sonar(que: "empieza" | "listo"): Promise<void> {
+  const ctx = contexto();
+  try { navigator.vibrate?.(que === "empieza" ? 35 : 20); } catch {}
+  if (!ctx) return Promise.resolve();
+  const notas = que === "empieza" ? [659.25, 987.77] : [783.99, 523.25];
+  const t0 = ctx.currentTime + 0.02;
+  notas.forEach((f, i) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine"; o.frequency.value = f;
+    const t = t0 + i * 0.13;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(que === "empieza" ? 0.35 : 0.22, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(g).connect(ctx.destination);
+    o.start(t); o.stop(t + 0.24);
+  });
+  return new Promise((ok) => setTimeout(ok, 380));
+}
+
 // El micrófono del asistente. Graba lo que dice Andrea, nota cuando deja de hablar y lo manda solo.
 // Con OpenAI conectado el audio se convierte en texto en el servidor (sirve igual en iPhone, Android
 // y en la app instalada). Sin OpenAI usa el dictado del teléfono y manda lo que haya escuchado.
@@ -73,9 +102,7 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
 
   /** Graba con el micrófono y se detiene sola cuando Andrea se queda callada. */
   const grabar = async () => {
-    const AC = window.AudioContext || (window as any).webkitAudioContext;
-    try { if (!ctxGlobal && AC) ctxGlobal = new AC(); ctxGlobal?.resume().catch(() => {}); } catch { ctxGlobal = null; }
-    const ctx = ctxGlobal;
+    const ctx = contexto();
     let fuente: MediaStreamAudioSourceNode | null = null;
 
     let abortado = false;
@@ -124,6 +151,7 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
       pintar(0);
       sesion.current = null;
       if (!mandar) { setEstado("quieto"); return; }
+      if (hablo || maxRms === 0) sonar("listo");
       // Si el medidor funcionaba y nunca oyó voz, no gastamos en mandar silencio.
       if (!hablo && maxRms > 0) { setEstado("quieto"); cb.current.avisar("No te escuché. Tocá el micrófono y hablame un poquito más cerca.", true); return; }
       const audio = new Blob(trozos, { type: mr.mimeType || tipo || "audio/webm" });
@@ -143,6 +171,9 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
     const tope = window.setTimeout(() => parar(true), MAX_MS);
     sesion.current = { parar };
 
+    // El sonidito de «ya, hablá» suena antes de grabar, así no queda en el audio.
+    await sonar("empieza");
+    if (parado) { stream.getTracks().forEach((t) => t.stop()); clearTimeout(tope); sesion.current = null; setEstado("quieto"); return; }
     try { mr.start(); } catch {
       stream.getTracks().forEach((t) => t.stop());
       sesion.current = null; setEstado("quieto");
@@ -225,8 +256,12 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
     };
     r.onend = terminar;
     sesion.current = { parar };
-    setModo("dictado"); setOido(""); setEstado("escuchando"); armar();
-    try { r.start(); } catch { problema = "No pude empezar a dictar. Probá de nuevo."; terminar(); }
+    setModo("dictado"); setOido(""); setEstado("pidiendo");
+    sonar("empieza").then(() => {
+      if (parado) return;
+      setEstado("escuchando"); armar();
+      try { r.start(); } catch { problema = "No pude empezar a dictar. Probá de nuevo."; terminar(); }
+    });
   };
 
   const empezar = useCallback((porToque = true) => {
@@ -253,10 +288,16 @@ export type Voz = ReturnType<typeof useVoz>;
 /** Lo que se ve mientras escucha: un círculo grande que late con la voz, lo que va entendiendo y dos botones claros. */
 export function Escuchando({ voz }: { voz: Voz }) {
   const { estado, modo, oido } = voz;
+  const [lento, setLento] = useState(false);
+  useEffect(() => {
+    if (estado !== "pidiendo") { setLento(false); return; }
+    const t = setTimeout(() => setLento(true), 2500);
+    return () => clearTimeout(t);
+  }, [estado]);
   const titulo =
-    estado === "pidiendo" ? "Dale permiso al micrófono" :
+    estado === "pidiendo" ? (lento ? "Dale permiso al micrófono" : "Un momentito…") :
     estado === "escribiendo" ? "Escribiendo lo que dijiste…" :
-    "Te escucho…";
+    "¡Hablá ahora!";
   return (
     <div className={`ch-oyendo is-${estado} is-${modo}`} role="status" aria-live="polite">
       <p className="ch-oyendo-titulo">{titulo}</p>
@@ -267,7 +308,8 @@ export function Escuchando({ voz }: { voz: Voz }) {
       >
         {estado === "escribiendo" ? <span className="pn-girando" /> : <Icon n="mic" s={44} />}
       </button>
-      {estado === "escuchando" && <p className="ch-oyendo-ayuda">Cuando terminés de hablar, lo mando solo.</p>}
+      {estado === "escuchando" && <p className="ch-oyendo-ayuda">Te estoy escuchando. Cuando terminés, quedate callada un segundito y lo mando sola.</p>}
+      {estado === "pidiendo" && !lento && <p className="ch-oyendo-ayuda">Cuando suene el tilín, empezá a hablar.</p>}
       {estado !== "escribiendo" && (
         <div className="ch-oyendo-botones">
           <button type="button" className="pn-boton is-claro" onClick={voz.cancelar}>Cancelar</button>

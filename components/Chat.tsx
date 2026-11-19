@@ -242,7 +242,7 @@ function Bienvenida({ d, piezas, hablarle, elegir, children }: { d: Datos; pieza
     <div className="ch-bienvenida">
       <div className="ch-hablame">
         <button className="ch-mic-grande" onClick={hablarle} aria-label="Hablarle al asistente"><Icon n="mic" s={44} /></button>
-        <p className="ch-hablame-txt"><b>Tocá y hablame</b><span>Como si le contaras a una persona. Por ejemplo:</span></p>
+        <p className="ch-hablame-txt"><b>Tocá y hablame</b><span>Cuando suene el tilín, contame como a una persona. Por ejemplo:</span></p>
         <p className="ch-ejemplo" key={i}>«{ejemplos[i]}»</p>
       </div>
       {children}

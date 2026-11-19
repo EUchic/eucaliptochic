@@ -727,3 +727,12 @@ html.teclado .gu { display: none; }
 .ds-editar span { flex: 1; text-align: left; }
 .ds-editar[aria-expanded="true"] > svg:last-child { transform: rotate(90deg); }
 .ds-campos { display: grid; gap: 10px; }
+.ds-foto img { width: 84px; height: 112px; }
+.ds-foto span { font-size: 14px; color: var(--tinta-2); }
+.ds-foto-botones { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+
+/* «¡Hablá ahora!» bien claro cuando empieza a escuchar */
+.ch-oyendo.is-escuchando .ch-oyendo-titulo { font-size: 34px; color: var(--rojo); animation: ch-habla 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3) both; }
+@keyframes ch-habla { from { transform: scale(0.7); opacity: 0; } }
+.ch-oyendo-ayuda { font-size: 16px; color: var(--tinta-2); max-width: 32ch; }
+@media (prefers-reduced-motion: reduce) { .ch-oyendo.is-escuchando .ch-oyendo-titulo { animation: none; } }

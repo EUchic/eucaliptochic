@@ -71,7 +71,8 @@ export default function Disenador({ d, piezas, pre, avisar, refrescar, listo, ca
   const [hasta, setHasta] = useState("");
   const [extra, setExtra] = useState(pre?.texto ?? "");
   const logos = (d.ajustes.panel_logos as Logo[] | undefined) ?? [];
-  const [org, setOrg] = useState<Logo | null | undefined>(undefined); // undefined = todavía no dijo
+  const logoDeFeria = (f?: Feria) => (f ? logos.find((l) => l.nombre.toLowerCase().includes(f.nombre.toLowerCase().replace(/^feria\s+/, "").slice(0, 12))) ?? null : null);
+  const [org, setOrg] = useState<Logo | null>(() => logoDeFeria(buscarFeria(pre?.feria) ?? proximas[0])); // null = no hay organizadora
   const [orgNombre, setOrgNombre] = useState("");
   const [subiendoLogo, setSubiendoLogo] = useState(false);
   const [foto, setFoto] = useState<Foto | null>(null);
@@ -86,14 +87,16 @@ export default function Disenador({ d, piezas, pre, avisar, refrescar, listo, ca
   const grande = useRef<HTMLCanvasElement>(null);
   const minis = useRef<Record<string, HTMLCanvasElement | null>>({});
 
-  // Al escoger una prenda o una feria, su foto queda de una (se puede cambiar).
+  // Al escoger una prenda o una feria, su foto queda puesta una sola vez; si la cambia, no se vuelve a poner sola.
+  const fotoDePieza = (p?: Pieza) => p?.lista?.find((x) => x.ia)?.base ?? p?.lista?.[0]?.base;
+  const auto = useRef("");
   useEffect(() => {
-    if (tipo === "prenda" && pieza && !foto) {
-      const f = pieza.lista?.find((x) => x.ia)?.base ?? pieza.lista?.[0]?.base;
-      if (f) setFoto({ src: f, nombre: pieza.nombre });
-    }
-    if (tipo === "feria" && feria?.foto && !foto) setFoto({ src: feria.foto, nombre: feria.nombre });
-  }, [tipo, pieza, feria, foto]);
+    const clave = `${tipo}:${tipo === "prenda" ? pieza?.slug : tipo === "feria" ? feria?.id : ""}`;
+    if (auto.current === clave) return;
+    auto.current = clave;
+    if (tipo === "prenda" && pieza) { const f = fotoDePieza(pieza); if (f) setFoto({ src: f, nombre: pieza.nombre }); }
+    else if (tipo === "feria" && feria?.foto) setFoto({ src: feria.foto, nombre: `Foto de ${feria.nombre}` });
+  }, [tipo, pieza, feria]);
 
   const datosTexto = () => {
     switch (tipo) {
@@ -107,7 +110,6 @@ export default function Disenador({ d, piezas, pre, avisar, refrescar, listo, ca
   };
   const falta = !tipo ? "para qué es el post"
     : tipo === "feria" && !feria ? "la feria"
-    : tipo === "feria" && org === undefined ? "si hay organizadora"
     : tipo === "coleccion" && coleccion.trim().length < 2 ? "el nombre de la colección"
     : tipo === "prenda" && !pieza ? "la prenda"
     : tipo === "oferta" && oferta.trim().length < 2 ? "la oferta"
@@ -243,7 +245,7 @@ export default function Disenador({ d, piezas, pre, avisar, refrescar, listo, ca
       <p className="pn-etq">¿Para qué es el post?</p>
       <div className="ds-tipos">
         {TIPOS.map((t) => (
-          <button key={t.id} className={tipo === t.id ? "is-on" : ""} onClick={() => { setTipo(t.id); setFoto(null); }} aria-pressed={tipo === t.id}>
+          <button key={t.id} className={tipo === t.id ? "is-on" : ""} onClick={() => { if (t.id !== tipo) { setTipo(t.id); setFoto(null); } }} aria-pressed={tipo === t.id}>
             <span className="ds-tipo-ico"><Icon n={t.ico} s={24} /></span><b>{t.nombre}</b><small>{t.sub}</small>
           </button>
         ))}
@@ -253,10 +255,11 @@ export default function Disenador({ d, piezas, pre, avisar, refrescar, listo, ca
         <>
           <p className="pn-etq">¿Cuál feria?</p>
           {proximas.length ? (
-            <div className="pn-chips">{proximas.map((f) => <button key={f.id} className={feria?.id === f.id ? "is-on" : ""} onClick={() => { setFeria(f); setFoto(null); }}>{f.nombre} · {fechaLarga(f.fecha).split(" ").slice(0, 2).join(" ")}</button>)}</div>
+            <div className="pn-chips">{proximas.map((f) => <button key={f.id} className={feria?.id === f.id ? "is-on" : ""} onClick={() => { setFeria(f); setOrg(logoDeFeria(f)); }}>{f.nombre} · {fechaLarga(f.fecha).split(" ").slice(0, 2).join(" ")}</button>)}</div>
           ) : <p className="pn-nota">No tenés ferias próximas anotadas. Agregala en Ferias y volvé.</p>}
           <label className="pn-campo"><span>Horario (opcional)</span><input value={horario} onChange={(e) => setHorario(e.target.value)} placeholder="Ej.: 10 a.m. a 6 p.m." maxLength={40} /></label>
-          <p className="pn-etq">¿La feria tiene organizadora? Su logo va en el post</p>
+          <p className="pn-etq">¿La feria tiene organizadora?</p>
+          <p className="pn-nota">Si tiene, subí su logo y lo pongo en el post. Si no, dejalo en «No hay».</p>
           <div className="ds-logos">
             {logos.map((l) => (
               <button key={l.id} className={org?.id === l.id ? "is-on" : ""} onClick={() => setOrg(l)} aria-pressed={org?.id === l.id}>
@@ -285,7 +288,7 @@ export default function Disenador({ d, piezas, pre, avisar, refrescar, listo, ca
         <>
           <p className="pn-etq">¿Cuál prenda?</p>
           <ul className="ds-rejilla">{conFoto.slice(0, 60).map((p) => (
-            <li key={p.slug}><button className={pieza?.slug === p.slug ? "is-on" : ""} onClick={() => { setPieza(p); setFoto(null); }}><img src={p.foto} alt="" loading="lazy" /><span>{p.nombre}</span></button></li>
+            <li key={p.slug}><button className={pieza?.slug === p.slug ? "is-on" : ""} onClick={() => setPieza(p)}><img src={p.foto} alt="" loading="lazy" /><span>{p.nombre}</span></button></li>
           ))}</ul>
         </>
       )}
@@ -305,24 +308,29 @@ export default function Disenador({ d, piezas, pre, avisar, refrescar, listo, ca
       {tipo && (
         <>
           <p className="pn-etq">La foto</p>
-          {foto ? (
+          {foto && !escogerFoto && (
             <div className="ds-foto">
               <img src={fuente(foto.src)} alt="" />
-              <div><b>{foto.nombre}</b><button className="pn-txt" onClick={() => { setFoto(null); setEscogerFoto(false); }}>Cambiar la foto</button></div>
+              <div><b>{foto.nombre}</b><span>Esta es la foto del post.</span></div>
             </div>
-          ) : escogerFoto ? (
+          )}
+          {escogerFoto ? (
             <>
-              <ul className="ds-rejilla">{conFoto.slice(0, 60).map((p) => (
-                <li key={p.slug}><button onClick={() => { const f = p.lista?.find((x) => x.ia)?.base ?? p.lista?.[0]?.base; if (f) { setFoto({ src: f, nombre: p.nombre }); setEscogerFoto(false); } }}><img src={p.foto} alt="" loading="lazy" /><span>{p.nombre}</span></button></li>
+              <p className="pn-nota">Tocá la prenda.</p>
+              <ul className="ds-rejilla">{conFoto.slice(0, 80).map((p) => (
+                <li key={p.slug}><button onClick={() => { const f = fotoDePieza(p); if (f) { setFoto({ src: f, nombre: p.nombre }); setEscogerFoto(false); } }}><img src={p.foto} alt="" loading="lazy" /><span>{p.nombre}</span></button></li>
               ))}</ul>
-              <button className="pn-txt" onClick={() => setEscogerFoto(false)}>Volver</button>
+              <button className="pn-btn is-gris" onClick={() => setEscogerFoto(false)}>Volver</button>
             </>
           ) : (
-            <div className="pn-botones is-columna">
-              <label className="pn-btn is-grande"><Icon n="foto" s={24} />Tomar o subir una foto
+            <div className="ds-foto-botones">
+              <label className={"pn-btn" + (foto ? " is-gris" : " is-grande")}><Icon n="foto" s={22} />{foto ? "Subir otra foto" : "Tomar o subir una foto"}
                 <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setFoto({ src: URL.createObjectURL(f), nombre: "Tu foto" }); }} />
               </label>
-              <button className="pn-btn is-tinte" onClick={() => setEscogerFoto(true)}><Icon n="percha" s={22} />Usar la foto de una prenda</button>
+              <button className={"pn-btn" + (foto ? " is-gris" : " is-tinte")} onClick={() => setEscogerFoto(true)}><Icon n="percha" s={22} />{foto ? "Usar la de una prenda" : "Usar la foto de una prenda"}</button>
+              {tipo === "feria" && feria?.foto && foto?.src !== feria.foto && (
+                <button className="pn-btn is-gris" onClick={() => setFoto({ src: feria.foto!, nombre: `Foto de ${feria.nombre}` })}><Icon n="carpa" s={22} />Usar la foto de la feria</button>
+              )}
             </div>
           )}
         </>
