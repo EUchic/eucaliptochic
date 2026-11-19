@@ -557,7 +557,7 @@ html.teclado .ch-mic, html.teclado .ch-enviar { width: 52px; height: 52px; }
 /* ───────── Compu: la barra pasa a la izquierda ───────── */
 @media (min-width: 900px) {
   .pn { padding-left: 232px; }
-  .pn-barra { padding-left: 24px; }
+  .pn-barra { padding-left: 24px; grid-template-columns: 1fr auto auto; }
   .pn-barra .pn-logo { display: none; }
   .pn-tabs {
     top: 0; right: auto; width: 232px; grid-template-columns: none; grid-auto-rows: min-content; align-content: start; gap: 4px;
