@@ -40,6 +40,8 @@ export async function POST(req: Request) {
     console.error("[publicar]", codigo, m);
     // Solo los códigos 10 y 200 de Meta son de permisos; lo demás se muestra tal cual para saber qué pasó.
     const permiso = codigo === 10 || codigo === 200 || /\(#(10|200)\)/.test(m);
-    return no(permiso ? `Instagram no dejó publicar por permisos: ${m}` : `Instagram no aceptó la publicación: ${m}`, 502);
+    return no(permiso
+      ? "Instagram no dejó publicar por permisos. En Meta Business → Usuarios del sistema → «Panel Eucalipto», la página Eucalipto Chic tiene que tener prendido «Contenido»."
+      : `Instagram no aceptó la publicación: ${m}`, 502);
   }
 }
