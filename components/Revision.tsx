@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { categoriasDe, fmt, hoy, type Accion, type Datos, type Pieza, type Talla } from "@/lib/asistente";
 import type { Seccion } from "@/lib/cerebro";
-import type { Pregunta } from "@/lib/revision";
+import { claveInventario, type Pregunta } from "@/lib/revision";
 import Icon from "./Icon";
 import BuscarLugar from "./Lugar";
 import { EditorTallas } from "./Tienda";
@@ -32,24 +32,28 @@ export default function Revision({ preguntas, d, piezas, guardar, irA, abrirFoto
     guardar([{ id: nid(), tipo: "ajuste", clave: "panel_revision_ok", valor: ok }], "");
     ocultar(c);
   };
-  const lista = preguntas.filter((p) => !ocultas.includes(p.clave)).slice(0, 3);
+  // Las urgentes siempre se ven (y no cuentan en el máximo de tres por día).
+  const lista = [...preguntas.filter((p) => p.urgente), ...preguntas.filter((p) => !p.urgente && !ocultas.includes(p.clave)).slice(0, 3)];
   if (!lista.length) return null;
+  const urgentes = lista.filter((p) => p.urgente).length;
 
   return (
     <div className="rv">
-      <p className="rv-cab"><Icon n="campana" s={20} />{lista.length === 1 ? "Tengo una preguntita" : `Tengo ${lista.length} preguntitas`}</p>
+      <p className="rv-cab"><Icon n="campana" s={20} />{lista.length === 1 ? "Tengo una preguntita" : `Tengo ${lista.length} preguntitas`}{urgentes > 0 && <span className="rv-urg-cuenta">{urgentes === 1 ? "1 urgente" : `${urgentes} urgentes`}</span>}</p>
       <ul>
         {lista.map((p) => (
-          <li key={p.clave} className={abierta === p.clave ? "is-abierta" : ""}>
+          <li key={p.clave} className={(abierta === p.clave ? "is-abierta" : "") + (p.urgente ? " is-urgente" : "")}>
             <button className="rv-texto" onClick={() => setAbierta(abierta === p.clave ? null : p.clave)} aria-expanded={abierta === p.clave}>
-              <span>{p.texto}</span><Icon n={abierta === p.clave ? "cerrar" : "flecha"} s={18} />
+              <span>{p.urgente && <b className="rv-urg">Urgente</b>}{p.texto}</span><Icon n={abierta === p.clave ? "cerrar" : "flecha"} s={18} />
             </button>
             {abierta === p.clave && (
               <div className="rv-resolver">
                 <Resolver p={p} d={d} piezas={piezas} guardar={guardar} listo={() => ocultar(p.clave)} irA={irA} abrirFoto={abrirFoto} preguntarAlAsistente={preguntarAlAsistente} />
                 <div className="rv-luego">
-                  <button className="pn-txt" onClick={() => ocultar(p.clave)}>Ahora no</button>
-                  {p.que !== "fotos_ia" && <button className="pn-txt" onClick={() => estaBien(p.clave)}>Está bien así</button>}
+                  {p.urgente ? <button className="pn-txt" onClick={() => setAbierta(null)}>Después</button> : <>
+                    <button className="pn-txt" onClick={() => ocultar(p.clave)}>Ahora no</button>
+                    {p.que !== "fotos_ia" && <button className="pn-txt" onClick={() => estaBien(p.clave)}>Está bien así</button>}
+                  </>}
                 </div>
               </div>
             )}
@@ -78,7 +82,11 @@ function Resolver({ p, d, piezas, guardar, listo, irA, abrirFoto, preguntarAlAsi
     case "existencias": return pieza ? (
       <>
         <EditorTallas tallas={tallas} set={setTallas} />
-        <button className="pn-btn" disabled={!tallas.length} onClick={async () => { if (await guardar([{ id: nid(), tipo: "tallas", slug: pieza.slug, nombre: pieza.nombre, tallas }], "¡Gracias! Ya lo anoté.")) listo(); }}><Icon n="check" s={22} />Guardar</button>
+        <button className="pn-btn" disabled={!tallas.length || (p.urgente && tallas.every((t) => t.existencias == null))} onClick={async () => {
+          const acciones: Accion[] = [{ id: nid(), tipo: "tallas", slug: pieza.slug, nombre: pieza.nombre, tallas }];
+          if (p.urgente) acciones.push({ id: nid(), tipo: "ajuste", clave: claveInventario(pieza.slug), valor: false });
+          if (await guardar(acciones, "¡Gracias! Ya lo anoté.")) listo();
+        }}><Icon n="check" s={22} />Guardar</button>
       </>
     ) : null;
     case "categoria": {

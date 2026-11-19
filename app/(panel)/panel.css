@@ -234,7 +234,7 @@ html.teclado .pn-tabs { transform: translateY(110%); }
 
 /* ───────── Asistente (chat) ───────── */
 .ch-hilo { display: flex; flex-direction: column; gap: 12px; }
-.ch-msg { display: flex; flex-direction: column; gap: 8px; animation: pn-sube 0.22s ease; }
+.ch-msg { display: flex; flex-direction: column; gap: 8px; animation: pn-sube 0.22s ease; scroll-margin-top: 76px; }
 .ch-msg.is-ella { align-items: flex-end; }
 .ch-msg.is-asis { align-items: flex-start; }
 .ch-burbuja { max-width: 86%; padding: 12px 16px; border-radius: 22px; font-size: 17px; line-height: 1.42; white-space: pre-line; }
@@ -670,3 +670,60 @@ html.teclado .gu { display: none; }
   .ch-saludo h1 { font-size: 42px; }
 }
 @media (prefers-reduced-motion: reduce) { .ch-ejemplo, .ch-bienvenida { animation: none; } }
+
+/* ── Preguntas urgentes ── */
+.rv-urg-cuenta { margin-left: auto; padding: 3px 10px; border-radius: 999px; background: var(--rojo-claro); color: var(--rojo); font-size: 13px; font-weight: 700; }
+.rv li.is-urgente { background: linear-gradient(90deg, rgba(178, 72, 61, 0.07), transparent 70%); box-shadow: inset 3px 0 0 var(--rojo); }
+.rv-urg { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 6px; background: var(--rojo); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; vertical-align: 2px; }
+
+/* ── Ficha de producto: foto de estudio con IA en el mismo paso ── */
+.ti-ficha-conia { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px; border-radius: 16px; background: var(--salvia-claro); text-align: left; }
+.ti-ficha-conia .pn-fila-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: #fff; color: var(--bosque); flex: none; }
+.ti-ficha-conia .pn-fila-txt { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.ti-ficha-conia b { font-size: 16px; }
+.ti-ficha-conia small { font-size: 14px; color: var(--tinta-2); line-height: 1.3; }
+.ti-ficha-ok { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--bosque); }
+.ti-ficha-ia { display: grid; gap: 12px; padding: 16px; border-radius: 16px; background: var(--fondo); }
+.ti-ficha-ia.is-haciendo { grid-template-columns: auto 1fr; align-items: center; gap: 14px; }
+.ti-ficha-ia p { display: grid; gap: 4px; }
+.ti-ficha-ia b { font-size: 17px; }
+.ti-ficha-ia span:not(.pn-girando) { font-size: 15px; color: var(--tinta-2); }
+.pn-nota.is-aviso { padding: 10px 12px; border-radius: 12px; background: var(--rojo-claro); color: var(--rojo); }
+
+/* ── Diseñador de posts con IA ── */
+.ds { display: grid; gap: 14px; }
+.pn-accion-ico.is-diseno { background: linear-gradient(135deg, var(--salvia-claro), #F6E7E2); color: var(--bosque); }
+.ds-tipos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.ds-tipos button { display: grid; gap: 4px; justify-items: start; padding: 14px; border-radius: 16px; background: var(--fondo); text-align: left; box-shadow: inset 0 0 0 1.5px transparent; transition: box-shadow 0.15s, background-color 0.15s; }
+.ds-tipos button.is-on { background: #fff; box-shadow: inset 0 0 0 2px var(--bosque); }
+.ds-tipo-ico { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; background: var(--salvia-claro); color: var(--bosque); margin-bottom: 4px; }
+.ds-tipos b { font-size: 16px; }
+.ds-tipos small { font-size: 13px; color: var(--tinta-2); }
+.ds-logos { display: flex; flex-wrap: wrap; gap: 8px; }
+.ds-logos button { display: grid; justify-items: center; gap: 6px; width: 96px; padding: 10px 6px; border-radius: 14px; background: var(--fondo); box-shadow: inset 0 0 0 1.5px transparent; }
+.ds-logos button.is-on { background: #fff; box-shadow: inset 0 0 0 2px var(--bosque); }
+.ds-logos img { width: 56px; height: 56px; object-fit: contain; background: #fff; border-radius: 10px; }
+.ds-logos span { font-size: 12px; font-weight: 600; color: var(--tinta-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-sin { width: 56px; height: 56px; display: grid; place-items: center; font-size: 26px !important; color: var(--tinta-3) !important; }
+.ds-subir-logo { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.ds-subir-logo > input { height: 50px; padding: 0 14px; border-radius: 14px; border: 0; background: var(--fondo); font: inherit; font-size: 16px; min-width: 0; }
+.ds-rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; max-height: 360px; overflow-y: auto; padding: 2px; }
+.ds-rejilla button { display: grid; gap: 4px; width: 100%; text-align: left; }
+.ds-rejilla img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 12px; background: var(--fondo); }
+.ds-rejilla button.is-on img { box-shadow: 0 0 0 3px var(--bosque); }
+.ds-rejilla span { font-size: 12px; font-weight: 600; color: var(--tinta-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-foto { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 16px; background: var(--fondo); }
+.ds-foto img { width: 64px; height: 84px; object-fit: cover; border-radius: 10px; }
+.ds-foto div { display: grid; gap: 4px; justify-items: start; }
+.ds-lienzo { justify-self: center; width: min(100%, 420px); border-radius: 14px; overflow: hidden; box-shadow: 0 10px 30px rgba(27, 31, 29, 0.18); background: var(--fondo); }
+.ds-lienzo.is-historia { width: min(100%, 320px); }
+.ds-lienzo canvas { display: block; width: 100%; height: auto; }
+.ds-plantillas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ds-plantillas button { display: grid; gap: 6px; justify-items: center; padding: 8px; border-radius: 14px; background: var(--fondo); box-shadow: inset 0 0 0 1.5px transparent; }
+.ds-plantillas button.is-on { background: #fff; box-shadow: inset 0 0 0 2px var(--bosque); }
+.ds-plantillas canvas { width: 100%; height: auto; border-radius: 8px; }
+.ds-plantillas span { font-size: 13px; font-weight: 600; }
+.ds-editar { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border-radius: 14px; background: var(--fondo); font-weight: 600; }
+.ds-editar span { flex: 1; text-align: left; }
+.ds-editar[aria-expanded="true"] > svg:last-child { transform: rotate(90deg); }
+.ds-campos { display: grid; gap: 10px; }

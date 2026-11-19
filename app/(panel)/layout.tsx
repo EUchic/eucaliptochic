@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/bodoni-moda";
+import "@fontsource-variable/jost";
 import "./panel.css";
 
 // El panel de Andrea vive aparte de la tienda: sin animaciones de entrada, carrito ni menú de la tienda.

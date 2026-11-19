@@ -229,7 +229,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
         {tab === "tienda" && <Tienda key={"t" + abrir.n} abrir={abrir.slug} todas={todas} colecciones={todasColecciones} tipos={tipos} guardar={guardar} subir={subirFotos} fotos={fotosSueltas} d={d} avisar={avisar} refrescar={refrescar} />}
         {tab === "ferias" && <FeriasPanel key={"f" + abrir.n} abrir={abrir.feria} d={d} enLinea={enLinea} guardar={guardar} subirFoto={subirFotoFeria} avisar={avisar} />}
         {tab === "anuncios" && (enLinea
-          ? <Anuncios ferias={d.ferias} piezas={todas} arrancar={arrancar} alArrancar={() => setArrancar(false)} avisar={avisar} />
+          ? <Anuncios d={d} piezas={todas} arrancar={arrancar} alArrancar={() => setArrancar(false)} avisar={avisar} refrescar={refrescar} />
           : <section className="pn-seccion"><header className="pn-titulo"><h1>Anuncios</h1><p>Las promociones se hacen cuando el panel está conectado.</p></header></section>)}
       </main>
 

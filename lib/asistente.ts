@@ -75,7 +75,7 @@ export function describir(a: Accion): string {
     case "precio": return `${a.nombre} pasa a costar ${fmt(a.precio)}`;
     case "visible": return a.visible ? `${a.nombre} vuelve a salir en la tienda` : `${a.nombre} se esconde de la tienda`;
     case "coleccion": return `Colección nueva: ${a.nombre}`;
-    case "mover": return `${a.nombre} pasa a la colección ${a.coleccion}`;
+    case "mover": return a.coleccion ? `${a.nombre} entra a la colección ${a.coleccion}` : `${a.nombre} sale de su colección`;
     case "pieza": return `Pieza nueva: ${a.nombre} (${a.tipoPieza}) a ${fmt(a.precio)}${a.coleccion ? ", colección " + a.coleccion : ""}${a.tallas?.length ? ", tallas " + a.tallas.map((t) => t.talla + (t.existencias != null ? ` (${t.existencias})` : "")).join(", ") : ""}`;
     case "tallas": return `${a.nombre}: ${a.tallas.map((t) => t.talla + (t.existencias != null ? ` (${t.existencias})` : "")).join(", ")}`;
     case "descripcion": return `Descripción nueva para ${a.nombre}`;
@@ -335,7 +335,7 @@ export function aplicar(d: Datos, a: Accion, tc: TipoCambio): Datos {
     case "visible": return { ...x, cambios: { ...x.cambios, [a.slug]: { ...x.cambios[a.slug], oculta: !a.visible } } };
     case "mover": return {
       ...x,
-      colecciones: x.colecciones.includes(a.coleccion) ? x.colecciones : [...x.colecciones, a.coleccion],
+      colecciones: !a.coleccion || x.colecciones.includes(a.coleccion) ? x.colecciones : [...x.colecciones, a.coleccion],
       cambios: { ...x.cambios, [a.slug]: { ...x.cambios[a.slug], coleccion: a.coleccion } },
     };
     case "coleccion": return { ...x, colecciones: x.colecciones.includes(a.nombre) ? x.colecciones : [...x.colecciones, a.nombre] };

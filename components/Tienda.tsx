@@ -7,6 +7,7 @@ import Icon from "./Icon";
 import FotosSitio from "./FotosSitio";
 import { achicarFoto } from "./achicar";
 import { avisarGuia } from "@/lib/guias";
+import { claveInventario } from "@/lib/revision";
 
 type G = (a: Accion[], msg?: string) => Promise<boolean>;
 type Subir = (p: Pieza, f: File[]) => Promise<boolean>;
@@ -49,10 +50,14 @@ export function EditorTallas({ tallas, set }: { tallas: Talla[]; set: (t: Talla[
 }
 
 /** Ficha para meter un producto nuevo: foto, nombre, tipo, precio, tallas y cuántas hay, colección y descripción. */
-export function FichaProducto({ inicial, piezas, colecciones, tipos, guardar, subir, listo, cancelar }: {
+export function FichaProducto({ inicial, piezas, colecciones, tipos, guardar, subir, listo, cancelar, avisar, refrescar }: {
   inicial?: BorradorPieza; piezas: Pieza[]; colecciones: string[]; tipos: string[]; guardar: G; subir: Subir;
-  listo: (texto: string) => void; cancelar: () => void;
+  listo: (texto: string) => void; cancelar: () => void; avisar?: Avisar; refrescar?: () => Promise<void>;
 }) {
+  const [conIA, setConIA] = useState(true);
+  const [hecha, setHecha] = useState<Pieza | null>(null); // la pieza ya guardada (pasa a revisar la foto de IA)
+  const [ia, setIA] = useState<{ id: string; url: string } | null>(null);
+  const [fase, setFase] = useState<"ficha" | "haciendo" | "revisar" | "error" | "rehacer">("ficha");
   const [fotos, setFotos] = useState<File[]>([]);
   const [nombre, setNombre] = useState(inicial?.nombre ?? "");
   const [tipo, setTipo] = useState(inicial?.tipoPieza ?? "");
@@ -64,19 +69,96 @@ export function FichaProducto({ inicial, piezas, colecciones, tipos, guardar, su
   const vistas = useMemo(() => fotos.map((f) => URL.createObjectURL(f)), [fotos]);
   const monto = Number(precio.replace(/\D/g, ""));
   const falta = !fotos.length ? "la foto" : nombre.trim().length < 2 ? "el nombre" : !tipo ? "el tipo de prenda" : !monto ? "el precio" : !tallas.length ? "las tallas" : "";
+  const sinInventario = tallas.length > 0 && tallas.some((t) => t.existencias == null);
+  const pendiente = sinInventario ? " Como no pusiste cuántas hay, te lo dejo como pregunta urgente." : "";
 
   async function guardarTodo() {
     if (falta) return;
     setOcupado("Guardando…");
     let slug = slugDe(nombre);
     if (piezas.some((p) => p.slug === slug)) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
-    const ok = await guardar([{ id: nid(), tipo: "pieza", slug, nombre: nombre.trim(), tipoPieza: tipo, precio: monto, coleccion: coleccion || undefined, descripcion: descripcion.trim() || undefined, tallas }], "");
+    const acciones: Accion[] = [{ id: nid(), tipo: "pieza", slug, nombre: nombre.trim(), tipoPieza: tipo, precio: monto, coleccion: coleccion || undefined, descripcion: descripcion.trim() || undefined, tallas }];
+    if (sinInventario) acciones.push({ id: nid(), tipo: "ajuste", clave: claveInventario(slug), valor: true });
+    const ok = await guardar(acciones, "");
     if (!ok) { setOcupado(""); return; }
     setOcupado("Subiendo la foto…");
     const p: Pieza = { slug, nombre: nombre.trim(), precio: monto, tipo, coleccion, foto: "", fotos: 0 };
     const subio = await subir(p, fotos);
     setOcupado("");
-    listo(subio ? `¡Listo! ${nombre.trim()} ya está en la tienda a ${fmt(monto)}.` : `Guardé ${nombre.trim()}, pero la foto no subió. Probá subirla desde Tienda.`);
+    if (!subio) { listo(`Guardé ${p.nombre}, pero la foto no subió. Probá subirla desde Tienda.${pendiente}`); return; }
+    if (!conIA) { listo(`¡Listo! ${p.nombre} ya está en la tienda a ${fmt(monto)}.${pendiente}`); return; }
+    setHecha(p);
+    hacerFotoIA(p);
+  }
+
+  /** La foto de estudio con IA, ahí mismo: se hace con la foto que acaba de subir y la revisa sin salir de la ficha. */
+  async function hacerFotoIA(p: Pieza) {
+    setFase("haciendo");
+    try {
+      const r = await fetch("/api/fotos/estudio", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug: p.slug }) });
+      if (r.status === 401) { location.href = "/admin/entrar"; return; }
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.id || !j.url) throw new Error(j.error);
+      setIA({ id: j.id, url: j.url });
+      setFase("revisar");
+    } catch { setFase("error"); }
+  }
+  const aprobar = async () => {
+    if (!hecha || !ia) return;
+    if (await guardar([{ id: nid(), tipo: "foto_aprobar", foto_id: ia.id, slug: hecha.slug, nombre: hecha.nombre }], "")) {
+      refrescar?.();
+      listo(`¡Listo! ${hecha.nombre} ya está en la tienda a ${fmt(hecha.precio)}, con la foto de estudio de portada.${pendiente}`);
+    }
+  };
+  const descartar = async () => {
+    if (!hecha || !ia) return;
+    if (await guardar([{ id: nid(), tipo: "foto_descartar", foto_id: ia.id, slug: hecha.slug, nombre: hecha.nombre }], "")) {
+      listo(`Listo, ${hecha.nombre} queda en la tienda con tu foto.${pendiente}`);
+    }
+  };
+
+  if (hecha && fase !== "ficha") {
+    const mia = vistas[0];
+    return (
+      <div className="ti-ficha">
+        <p className="ti-ficha-ok"><Icon n="check" s={20} />{hecha.nombre} ya está guardada.</p>
+        {fase === "haciendo" && (
+          <div className="ti-ficha-ia is-haciendo">
+            <span className="pn-girando" aria-hidden />
+            <p><b>Haciendo la foto de estudio con IA…</b><span>Tarda 1 o 2 minutos. Podés seguir con otra cosa; cuando esté, aparece aquí.</span></p>
+          </div>
+        )}
+        {fase === "error" && (
+          <div className="ti-ficha-ia">
+            <p><b>No pude hacer la foto con IA ahora.</b><span>La pieza ya está en la tienda con tu foto. Podés intentarlo otra vez.</span></p>
+            <div className="pn-botones is-columna">
+              <button className="pn-btn" onClick={() => hacerFotoIA(hecha)}><Icon n="chispa" s={22} />Intentar otra vez</button>
+              <button className="pn-btn is-gris" onClick={() => listo(`Listo, ${hecha.nombre} queda con tu foto.${pendiente}`)}>Dejarla con mi foto</button>
+            </div>
+          </div>
+        )}
+        {(fase === "revisar" || fase === "rehacer") && ia && (
+          <>
+            <div className="ti-ia-par">
+              <figure><img src={mia} alt="Tu foto" /><figcaption>Tu foto</figcaption></figure>
+              <figure className="is-nueva"><a href={ia.url} target="_blank" rel="noreferrer"><img src={ia.url.replace(/-1600\.webp$/, "-800.webp")} alt={`Foto de estudio de ${hecha.nombre}`} /></a><figcaption>Con IA</figcaption></figure>
+            </div>
+            {fase === "rehacer" ? (
+              <RehacerFoto p={hecha} avisar={avisar ?? (() => {})} cerrar={(ok, nueva) => { if (ok && nueva) setIA(nueva); setFase("revisar"); }} />
+            ) : (
+              <>
+                <p className="pn-nota">Fijate que la prenda sea igualita: color, largo, mangas y detalles.</p>
+                <div className="pn-botones is-columna">
+                  <button className="pn-btn is-grande" onClick={aprobar}><Icon n="check" s={24} />Usarla de portada</button>
+                  <button className="pn-btn is-tinte" onClick={() => setFase("rehacer")}><Icon n="lapiz" s={20} />Tiene un error: decir qué y rehacerla</button>
+                  <button className="pn-btn is-gris" onClick={descartar}>No me gusta, dejar mi foto</button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -88,6 +170,13 @@ export function FichaProducto({ inicial, piezas, colecciones, tipos, guardar, su
           <input type="file" accept="image/*" multiple hidden onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ""; setFotos([...fotos, ...fs].slice(0, 6)); }} />
         </label>
       </div>
+      {fotos.length > 0 && (
+        <button type="button" className="pn-fila ti-ficha-conia" role="switch" aria-checked={conIA} onClick={() => setConIA(!conIA)}>
+          <span className="pn-fila-ico"><Icon n="chispa" s={22} /></span>
+          <span className="pn-fila-txt"><b>Foto de estudio con IA</b><small>Con tu foto hago una foto profesional con modelo. La revisás antes de que salga.</small></span>
+          <span className={"pn-switch" + (conIA ? " is-on" : "")} aria-hidden><i /></span>
+        </button>
+      )}
       <label className="pn-campo"><span>Nombre</span><input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej.: Blusa Jade" autoComplete="off" /></label>
       <p className="pn-etq">Tipo de prenda</p>
       <div className="pn-chips">{tipos.map((t) => <button type="button" key={t} className={tipo === t ? "is-on" : ""} onClick={() => setTipo(t)}>{t}</button>)}</div>
@@ -97,9 +186,10 @@ export function FichaProducto({ inicial, piezas, colecciones, tipos, guardar, su
       <p className="pn-etq">Colección (opcional)</p>
       <div className="pn-chips">{["", ...colecciones].map((c) => <button type="button" key={c || "-"} className={coleccion === c ? "is-on" : ""} onClick={() => setColeccion(c)}>{c || "Ninguna"}</button>)}</div>
       <label className="pn-campo"><span>Descripción (opcional)</span><textarea rows={3} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Tela, corte, cómo se usa…" /></label>
+      {sinInventario && !falta && <p className="pn-nota is-aviso">¿No tenés el inventario a mano? Guardala igual: te lo dejo como pregunta urgente para después.</p>}
       {falta && <p className="pn-nota">Falta {falta}.</p>}
       <div className="pn-botones is-columna">
-        <button className="pn-btn is-grande" disabled={!!falta || !!ocupado} onClick={guardarTodo}><Icon n="check" s={24} />{ocupado || "Guardar producto"}</button>
+        <button className="pn-btn is-grande" disabled={!!falta || !!ocupado} onClick={guardarTodo}><Icon n="check" s={24} />{ocupado || (conIA && fotos.length ? "Guardar y hacer la foto con IA" : "Guardar producto")}</button>
         <button className="pn-btn is-gris" disabled={!!ocupado} onClick={cancelar}>Cancelar</button>
       </div>
     </div>
@@ -110,7 +200,7 @@ type Avisar = (m: string, malo?: boolean) => void;
 const ERRORES: [string, string][] = [["Color", "El color no es igual"], ["Largo", "Cambió el largo"], ["Mangas", "Las mangas están mal"], ["Detalles", "Le faltan o sobran detalles"], ["Tela", "Cambió la tela o el estampado"], ["La modelo", "La modelo o la pose"]];
 
 /** «Tiene un error»: Andrea dice qué está mal y la IA hace la foto otra vez, corrigiendo eso. */
-export function RehacerFoto({ p, inicial, avisar, refrescar, cerrar }: { p: Pieza; inicial?: string; avisar: Avisar; refrescar: () => Promise<void>; cerrar: (hecho?: boolean) => void }) {
+export function RehacerFoto({ p, inicial, avisar, refrescar, cerrar }: { p: Pieza; inicial?: string; avisar: Avisar; refrescar?: () => Promise<void>; cerrar: (hecho?: boolean, nueva?: { id: string; url: string }) => void }) {
   const [txt, setTxt] = useState(inicial ?? "");
   const [haciendo, setHaciendo] = useState(false);
   const [suyas, setSuyas] = useState<File[]>([]);
@@ -126,10 +216,9 @@ export function RehacerFoto({ p, inicial, avisar, refrescar, cerrar }: { p: Piez
       const j = await r.json().catch(() => ({}));
       if (r.status === 401) { location.href = "/admin/entrar"; return; }
       if (!r.ok) throw new Error(j.error || "No se pudo rehacer la foto.");
-      await refrescar();
-      avisar("¡Lista! Revisá la foto nueva en «Fotos nuevas hechas con IA».");
+      if (refrescar) { await refrescar(); avisar("¡Lista! Revisá la foto nueva en «Fotos nuevas hechas con IA»."); }
       avisarGuia("rehecha");
-      cerrar(true);
+      cerrar(true, j.id && j.url ? { id: j.id, url: j.url } : undefined);
     } catch (e) { avisar((e as Error).message, true); setHaciendo(false); }
   }
   return (
@@ -274,7 +363,7 @@ export default function Tienda({ todas, colecciones, tipos, guardar, subir, foto
       </header>
 
       {nueva ? (
-        <div className="pn-tarjeta"><FichaProducto piezas={todas} colecciones={colecciones} tipos={tipos} guardar={guardar} subir={subir} listo={(t) => { setNueva(false); avisar(t); }} cancelar={() => setNueva(false)} /></div>
+        <div className="pn-tarjeta"><FichaProducto piezas={todas} colecciones={colecciones} tipos={tipos} guardar={guardar} subir={subir} avisar={avisar} refrescar={refrescar} listo={(t) => { setNueva(false); avisar(t); refrescar(); }} cancelar={() => setNueva(false)} /></div>
       ) : <button className="pn-btn is-grande" data-guia="nuevo" onClick={() => setNueva(true)}><Icon n="mas" s={24} />Meter un producto nuevo</button>}
 
       <FotosIA piezas={todas} guardar={guardar} avisar={avisar} refrescar={refrescar} />

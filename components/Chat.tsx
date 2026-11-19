@@ -14,6 +14,7 @@ import { callar, desbloquear, hablar } from "./hablar";
 import Icon from "./Icon";
 import Revision from "./Revision";
 import { FichaProducto, RehacerFoto } from "./Tienda";
+import Disenador from "./Disenador";
 import { achicarFoto } from "./achicar";
 import type { PedidoGuia } from "@/lib/guias";
 export { achicarFoto };
@@ -44,7 +45,15 @@ export default function Chat(props: Props) {
   }, [clave]);
   useEffect(() => {
     try { localStorage.setItem(clave, JSON.stringify(msgs.slice(-40).map(({ tarjeta, ...m }) => ({ ...m, hecho: true, tarjeta: tarjeta?.tipo === "resumen" ? tarjeta : undefined })))); } catch {}
-    if (msgs.length) requestAnimationFrame(() => fin.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+    // Si lo último es una ficha larga (producto, feria…), se muestra desde arriba, donde empieza (la foto);
+    // si no, se baja hasta el final como en cualquier chat.
+    if (msgs.length) requestAnimationFrame(() => {
+      const todos = document.querySelectorAll<HTMLElement>(".ch-hilo > .ch-msg");
+      const ult = todos[todos.length - 1];
+      const libre = window.innerHeight - 250;
+      if (ult?.classList.contains("is-asis") && ult.querySelector(".ch-tarjeta") && ult.offsetHeight > libre) ult.scrollIntoView({ behavior: "smooth", block: "start" });
+      else fin.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
   }, [msgs, clave]);
 
   const cerrarTarjeta = useCallback((id: string, nota?: string, dicho?: string) => {
@@ -281,9 +290,15 @@ function TarjetaVista(p: VistaProps) {
     case "publicar": return p.enLinea
       ? <div className="ch-tarjeta"><Publicar piezas={p.piezas} que={t.que} idea={t.caption} avisar={p.avisar} listo={(x) => p.cerrar("Se publicó en Instagram.", x)} cancelar={() => p.cerrar("Andrea canceló la publicación.", "Listo, no publiqué nada.")} /></div>
       : <p className="ch-tarjeta pn-nota">Para publicar, el panel tiene que estar conectado.</p>;
-    case "producto": return <div className="ch-tarjeta"><FichaProducto inicial={t.borrador} piezas={p.piezas} colecciones={p.colecciones} tipos={p.tipos} guardar={p.guardar} subir={p.subirFotos} listo={(x) => p.cerrar("Se guardó el producto.", x)} cancelar={() => p.cerrar("Andrea canceló el producto.", "Listo, no guardé nada.")} /></div>;
+    case "producto": return <div className="ch-tarjeta"><FichaProducto inicial={t.borrador} piezas={p.piezas} colecciones={p.colecciones} tipos={p.tipos} guardar={p.guardar} subir={p.subirFotos} avisar={p.avisar} refrescar={p.refrescar} listo={(x) => p.cerrar("Se guardó el producto.", x)} cancelar={() => p.cerrar("Andrea canceló el producto.", "Listo, no guardé nada.")} /></div>;
     case "feria": return <div className="ch-tarjeta"><FichaFeria inicial={t.borrador} guardar={p.guardar} listo={(f) => p.cerrar(`Se anotó la feria ${f.nombre}.`, `¡Listo! ${f.nombre} ya está anotada. ¿La promocionamos unos días antes?`)} cancelar={() => p.cerrar("Andrea canceló la feria.", "Listo, no anoté nada.")} /></div>;
     case "foto": return <FlujoFoto slug={t.slug} piezas={p.piezas} subirFotos={p.subirFotos} avisar={p.avisar} cerrar={p.cerrar} />;
+    case "disenar": return (
+      <div className="ch-tarjeta">
+        <Disenador d={p.d} piezas={p.piezas} pre={t.pre} avisar={p.avisar} refrescar={p.refrescar}
+          listo={(x) => p.cerrar("Andrea publicó el diseño.", x)} cancelar={() => p.cerrar("Andrea cerró el diseñador.", "Listo. Cuando querás hacemos otro.")} />
+      </div>
+    );
     case "rehacer": {
       const pz = p.piezas.find((x) => x.slug === t.slug);
       if (!pz) return null;

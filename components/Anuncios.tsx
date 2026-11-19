@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Feria, Pieza } from "@/lib/asistente";
+import type { Datos, Feria, Pieza } from "@/lib/asistente";
 import {
   apiAnuncios, arranques, calendario, conIva, DIAS, MONTOS, nidPromo, plata, primeraLinea, RECOMENDADO, TOPES,
   type Arranque, type InfoAnuncios, type Post, type Promo,
 } from "@/lib/promo";
 import Icon from "./Icon";
+import Disenador, { type PreDiseno } from "./Disenador";
 import { avisarGuia } from "@/lib/guias";
 import PostIG from "./PostIG";
 
@@ -259,13 +260,15 @@ async function aJpeg(archivo: Blob, que: "post" | "story"): Promise<{ blob: Blob
 }
 
 /** Subir un post o una historia nueva a Instagram: foto, texto (con ayuda de la IA), vista previa y confirmación. */
-export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, listo, cancelar }: {
+export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, listo, cancelar, inicial }: {
   piezas: Pieza[]; que?: "post" | "story"; idea?: string; avisar: Avisar; listo: (texto: string) => void; cancelar: () => void;
+  /** Un diseño ya hecho (desde el diseñador): se publica tal cual, con su texto. */
+  inicial?: { blob: Blob; url: string; caption?: string };
 }) {
   const [que, setQue] = useState<"post" | "story">(queInicial);
-  const [foto, setFoto] = useState<{ blob: Blob; url: string; pieza?: Pieza } | null>(null);
+  const [foto, setFoto] = useState<{ blob: Blob; url: string; pieza?: Pieza } | null>(inicial ? { blob: inicial.blob, url: inicial.url } : null);
   const [elegirPieza, setElegirPieza] = useState(false);
-  const [caption, setCaption] = useState("");
+  const [caption, setCaption] = useState(inicial?.caption ?? "");
   const [escribiendo, setEscribiendo] = useState(false);
   const [confirmar, setConfirmar] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -301,10 +304,12 @@ export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, 
 
   return (
     <div className="pr">
-      <div className="pn-seg" role="tablist">
-        <button className={que === "post" ? "is-on" : ""} onClick={() => { setQue("post"); setFoto(null); }}>Post</button>
-        <button className={que === "story" ? "is-on" : ""} onClick={() => { setQue("story"); setFoto(null); }}>Historia</button>
-      </div>
+      {!inicial && (
+        <div className="pn-seg" role="tablist">
+          <button className={que === "post" ? "is-on" : ""} onClick={() => { setQue("post"); setFoto(null); }}>Post</button>
+          <button className={que === "story" ? "is-on" : ""} onClick={() => { setQue("story"); setFoto(null); }}>Historia</button>
+        </div>
+      )}
       {!foto ? (
         elegirPieza ? (
           <>
@@ -339,7 +344,7 @@ export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, 
           <div className="pn-botones is-columna">
             {que === "post" && <button className="pn-btn is-tinte" disabled={escribiendo} onClick={escribir}><Icon n="chispa" s={22} />{escribiendo ? "Escribiendo…" : caption ? "Escribir otro con IA" : "Escribir el texto con IA"}</button>}
             <button className="pn-btn is-grande" disabled={que === "post" && !caption.trim()} onClick={() => setConfirmar(true)}><Icon n="insta" s={24} />Publicar en Instagram</button>
-            <button className="pn-btn is-gris" onClick={() => setFoto(null)}>Cambiar la foto</button>
+            {!inicial && <button className="pn-btn is-gris" onClick={() => setFoto(null)}>Cambiar la foto</button>}
           </div>
         </>
       )}
@@ -355,9 +360,12 @@ export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, 
 const ESTADOS: Record<Promo["estado"], string> = { creando: "Preparándose", activa: "Corriendo", detenida: "Detenida", terminada: "Terminó", error: "No se hizo" };
 
 /** Pestaña Anuncios: tope del mes, promocionar, publicar y resultados. */
-export default function Anuncios({ ferias, piezas, arrancar, alArrancar, avisar }: { ferias: Feria[]; piezas: Pieza[]; arrancar: boolean; alArrancar: () => void; avisar: Avisar }) {
+export default function Anuncios({ d, piezas, arrancar, alArrancar, avisar, refrescar, disenar }: {
+  d: Datos; piezas: Pieza[]; arrancar: boolean; alArrancar: () => void; avisar: Avisar; refrescar: () => Promise<void>; disenar?: PreDiseno | null;
+}) {
+  const ferias = d.ferias;
   const [info, setInfo] = useState<InfoAnuncios | null>(null);
-  const [vista, setVista] = useState<"" | "promo" | "publicar">("");
+  const [vista, setVista] = useState<"" | "promo" | "publicar" | "disenar">(disenar ? "disenar" : "");
   const [tope, setTope] = useState(false);
   const [detener, setDetener] = useState<string | null>(null);
   const cargar = () => apiAnuncios().then(setInfo).catch((e) => avisar(e.message, true));
@@ -375,10 +383,12 @@ export default function Anuncios({ ferias, piezas, arrancar, alArrancar, avisar 
 
       {vista === "promo" && <div className="pn-tarjeta"><Promocionar ferias={ferias} avisar={avisar} listo={terminar} cancelar={() => setVista("")} /></div>}
       {vista === "publicar" && <div className="pn-tarjeta"><Publicar piezas={piezas} avisar={avisar} listo={terminar} cancelar={() => setVista("")} /></div>}
+      {vista === "disenar" && <div className="pn-tarjeta"><Disenador d={d} piezas={piezas} pre={disenar ?? undefined} avisar={avisar} refrescar={refrescar} listo={terminar} cancelar={() => setVista("")} /></div>}
 
       {!vista && (
         <>
           <div className="pn-acciones">
+            <button className="pn-accion" data-guia="disenar" onClick={() => setVista("disenar")}><span className="pn-accion-ico is-diseno"><Icon n="chispa" s={26} /></span><span><b>Diseñar un post con IA</b><small>Para una feria, una colección, una prenda u oferta</small></span><Icon n="flecha" s={20} /></button>
             <button className="pn-accion" data-guia="promocionar" onClick={() => setVista("promo")}><span className="pn-accion-ico"><Icon n="megafono" s={26} /></span><span><b>Promocionar</b><small>Un post o una historia</small></span><Icon n="flecha" s={20} /></button>
             <button className="pn-accion" data-guia="publicar" onClick={() => setVista("publicar")}><span className="pn-accion-ico is-insta"><Icon n="insta" s={26} /></span><span><b>Publicar en Instagram</b><small>Post o historia con texto hecho por IA</small></span><Icon n="flecha" s={20} /></button>
           </div>

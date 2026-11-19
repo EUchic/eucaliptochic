@@ -4,6 +4,7 @@
 // Nunca guarda nada por su cuenta: todo pasa por un "Sí" de Andrea.
 
 import type { Tarea } from "./guias";
+import type { PreDiseno } from "@/components/Disenador";
 import {
   buscarFeria, buscarPieza, categoriasDe, entender, fmt, monto, norm, resumenMes,
   type Accion, type Datos, type Pieza, type Sentido, type TipoCambio,
@@ -20,6 +21,7 @@ export type Tarjeta =
   | { tipo: "publicar"; caption?: string; que?: "post" | "story" }
   | { tipo: "foto"; slug?: string }
   | { tipo: "rehacer"; slug: string; texto?: string }
+  | { tipo: "disenar"; pre: PreDiseno }
   | { tipo: "producto"; borrador: BorradorPieza }
   | { tipo: "feria"; borrador: BorradorFeria }
   | { tipo: "ir"; seccion: Seccion; boton: string; tarea?: Tarea; slug?: string; feria?: string }
@@ -79,6 +81,26 @@ export function pensarLocal(texto: string, piezas: Pieza[], d: Datos, tc: TipoCa
     return { respuesta: AYUDA, acciones: [], tarjeta: { tipo: "opciones", ops: SUGERENCIAS } };
   }
 
+  // Colecciones: meter una pieza que YA EXISTE a una colección, o crear una colección.
+  if (/coleccion/.test(n)) {
+    const [antes, despues = ""] = n.split(/coleccion(?:es)?/);
+    const nombreRaw = texto.split(/colecci[oó]n(?:es)?/i)[1]?.replace(/^\s*(nueva\s+)?(que se llama|llamada|de nombre|de|del|la|el)?\s*/i, "").replace(/[.?!¡¿"«»]/g, "").trim() ?? "";
+    const existente = d.colecciones.find((c) => despues.includes(norm(c)));
+    const col = existente ?? (nombreRaw ? nombreRaw.replace(/^./, (c) => c.toUpperCase()).slice(0, 40) : "");
+    const pz = buscarPieza(antes, piezas);
+    if (pz && col && /(mete|meter|pon|poner|pasa|pasar|agrega|agregar|incluy|move|mov|a la|al)/.test(antes)) {
+      return { respuesta: `Meto ${pz.nombre} en la colección ${col}${existente ? "" : ", que la creo de una"}. ¿Lo guardo?`,
+        acciones: [{ id: uid(), tipo: "mover", slug: pz.slug, nombre: pz.nombre, coleccion: col }] };
+    }
+    if (col && /(crea|crear|hace|hacer|arma|armar|nueva|abrir)/.test(antes) && !existente) {
+      return { respuesta: `Creo la colección ${col}. Después me decís qué piezas van y las meto.`, acciones: [{ id: uid(), tipo: "coleccion", nombre: col }] };
+    }
+    if (col && !pz) {
+      return { respuesta: "¿Querés crear una colección nueva o meter una prenda a una colección que ya existe?", acciones: [],
+        tarjeta: { tipo: "opciones", ops: [existente ? `Meter una prenda a ${existente}` : `Crear la colección ${col}`, "Meter una prenda a una colección que ya existe"] } };
+    }
+  }
+
   // Producto nuevo: abre la ficha (foto, tallas, cuántas hay, precio…)
   if (/(meter|agregar|subir|crear|anotar|registrar|poner|nuev)\w* (un |una |el |la )?(producto|pieza|prenda|blusa|vestido|falda|pantalon|enterizo|top|sueter)/.test(n) || /(producto|pieza|prenda) nuev/.test(n)) {
     const nombre = texto.match(/(?:llama|se llama|nombre)\s+(.+)$/i)?.[1]?.trim();
@@ -90,6 +112,13 @@ export function pensarLocal(texto: string, piezas: Pieza[], d: Datos, tc: TipoCa
   if (/(agregar|anotar|meter|crear|poner|registrar|nueva)\w* (una |la )?feria/.test(n) || /feria nueva/.test(n)) {
     return { respuesta: "Dale. Contame el nombre, la fecha y dónde es; el lugar lo buscamos en el mapa.", acciones: [], tarjeta: { tipo: "feria", borrador: {} } };
   }
+  // Diseñar un post (arte, flyer, historia) con el diseñador
+  if (/(disen|arte\b|flyer|afiche|volante|plantilla|post para|historia para|arte para)/.test(n)) {
+    const tipo = /feria/.test(n) ? "feria" : /coleccion/.test(n) ? "coleccion" : /(oferta|descuento|promo\b|rebaja)/.test(n) ? "oferta" : /(blusa|vestido|falda|pantalon|enterizo|top|prenda|pieza)/.test(n) ? "prenda" : undefined;
+    return { respuesta: "¡Hagámoslo! Escogé la foto y yo escribo los textos y lo armo con tu logo.", acciones: [],
+      tarjeta: { tipo: "disenar", pre: { tipo, feria: tipo === "feria" ? buscarFeria(texto, d.ferias) : undefined, slug: tipo === "prenda" ? buscarPieza(texto, piezas)?.slug : undefined } } };
+  }
+
   // Publicar en Instagram
   if (/(publicar|subir|postear|montar)\w* (un |una |el |la )?(post|story|historia|foto) (en|a|al) (instagram|ig)/.test(n) || /(publicar|postear) en (instagram|ig)/.test(n)) {
     return { respuesta: "Hagámoslo. Escogé la foto, te ayudo con el texto y lo revisás antes de publicar.", acciones: [], tarjeta: { tipo: "publicar", que: /story|historia/.test(n) ? "story" : "post" } };

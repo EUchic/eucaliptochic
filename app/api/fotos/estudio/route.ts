@@ -126,7 +126,7 @@ export async function POST(req: Request) {
     if (p.base) await marcarBase(id, p.base).catch(() => {});
     await borrarPropuestasViejas(p.id, id).catch(() => {});
     try { refrescarTienda(); } catch {}
-    return NextResponse.json({ ok: true, slug, url });
+    return NextResponse.json({ ok: true, slug, url, id });
   } catch (e) {
     console.error("[estudio]", slug, (e as Error).message);
     return no("No se pudo hacer la foto de esta pieza. " + (e as Error).message.slice(0, 160), 502);

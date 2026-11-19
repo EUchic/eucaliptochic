@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { TAREAS, seccionDe, type Tarea } from "@/lib/guias";
-import { CATS, METODOS, describir, fmt, hoy, type Accion, type Talla } from "@/lib/asistente";
+import { CATS, METODOS, buscarPieza, describir, fmt, hoy, norm, type Accion, type Pieza, type Talla } from "@/lib/asistente";
 import type { Movimiento, Seccion, Tarjeta } from "@/lib/cerebro";
 import { responses, textoDe } from "@/lib/ia";
 import { permitido } from "@/lib/panel";
@@ -57,9 +57,13 @@ function herramientas(cats: string[]) {
     fn("cambiar_precio", "Cambia el precio de una pieza.", { slug: { type: "string" }, precio: { type: "number" } }, ["slug", "precio"]),
     fn("mostrar_u_ocultar", "Esconde una pieza de la tienda (agotada) o la vuelve a mostrar.", { slug: { type: "string" }, visible: { type: "boolean" } }, ["slug", "visible"]),
     fn("cambiar_tallas", "Actualiza las tallas de una pieza y cuántas quedan de cada una.", { slug: { type: "string" }, tallas: { type: "array", items: talla } }, ["slug", "tallas"]),
-    fn("crear_coleccion", "Crea una colección nueva.", { nombre: { type: "string" } }, ["nombre"]),
-    fn("mover_a_coleccion", "Pasa una pieza a una colección.", { slug: { type: "string" }, coleccion: { type: "string" } }, ["slug", "coleccion"]),
-    fn("crear_producto", "Abre la ficha para meter un producto nuevo: foto, nombre, tipo, precio, tallas con cuántas hay, colección y descripción. Pasá todo lo que Andrea ya dijo; la ficha le pide lo que falte.", {
+    fn("crear_coleccion", "Crea una colección nueva. Si ya dijo qué piezas van en ella, pasalas en 'piezas' y quedan metidas de una.", {
+      nombre: { type: "string" }, piezas: { type: "array", items: { type: "string" }, description: "slugs de piezas que YA EXISTEN y van en la colección" },
+    }, ["nombre"]),
+    fn("mover_a_coleccion", "Mete una o varias piezas que YA EXISTEN en la lista a una colección (meter, poner, pasar, agregar a la colección). Si la colección no existe, se crea sola. Para sacarla de toda colección, coleccion vacía.", {
+      piezas: { type: "array", items: { type: "string" }, description: "slugs de las piezas" }, coleccion: { type: "string" },
+    }, ["piezas", "coleccion"]),
+    fn("crear_producto", "Abre la ficha para meter una prenda NUEVA que todavía no está en la lista de piezas: foto (y la foto de estudio con IA), nombre, tipo, precio, tallas con cuántas hay, colección y descripción. Pasá todo lo que Andrea ya dijo; la ficha le pide lo que falte. Si la prenda ya está en la lista, NO uses esto.", {
       nombre: { type: "string" }, tipo: { type: "string", enum: TIPOS_PIEZA.slice(0, -1) }, precio: { type: "number" }, coleccion: { type: "string" },
       descripcion: { type: "string" }, tallas: { type: "array", items: talla },
     }),
@@ -71,6 +75,13 @@ function herramientas(cats: string[]) {
     fn("publicar_en_instagram", "Abre el paso para subir un post o una historia nueva a Instagram desde el panel (foto + texto).", {
       que: { type: "string", enum: ["post", "story"] }, idea: { type: "string", description: "De qué quiere que hable el texto, si lo dijo" },
     }, ["que"]),
+    fn("disenar_post", "Abre el diseñador de posts con IA (como Canva): Andrea escoge la foto, la IA escribe los textos y lo arma con su logo (y el de la organizadora si es una feria); después lo guarda o lo publica en Instagram. Usalo cuando quiere hacer un post, un arte, un flyer o una historia para una feria, una colección nueva, una prenda, una oferta u otra cosa.", {
+      tipo: { type: "string", enum: ["feria", "coleccion", "prenda", "oferta", "otro"] },
+      feria: { type: "string", description: "id o nombre de la feria, si es de una feria" },
+      coleccion: { type: "string", description: "nombre de la colección, si es de una colección" },
+      pieza: { type: "string", description: "slug de la prenda, si es de una prenda" },
+      texto: { type: "string", description: "lo que Andrea quiere que diga el post, con sus palabras" },
+    }),
     fn("mejorar_foto", "Abre el paso para subir o escoger una foto de una pieza y mejorarla con IA.", { slug: { type: "string" } }),
     fn("rehacer_foto_ia", "Cuando Andrea dice que la foto de producto hecha con IA de una pieza tiene un error (color, largo, mangas, detalles…). Muestra el cuadro para decir qué está mal y hacerla otra vez.", { slug: { type: "string" }, que_esta_mal: { type: "string", description: "Lo que está mal, con las palabras de Andrea, si ya lo dijo" } }, ["slug"]),
     fn("ir_a", "Lleva a Andrea a una sección del panel. Si va a hacer algo allá, poné la tarea: el panel la guía paso a paso (le dice qué tocar y se lo resalta) hasta que termina. Usalo para lo que no se puede hacer aquí en el chat.", {
@@ -110,8 +121,10 @@ export async function POST(req: Request) {
     "Plata: usá registrar_movimientos (puede ser varios a la vez). Incluí siempre el nombre de la persona cuando lo diga. Si le pagó a una persona (costurera, planchado, mensajero, ayudante…) y no dijo a quién, preguntale el nombre ofreciendo las personas que ya conocés y 'Prefiero no decir'. Si una venta fue por SINPE o transferencia y no dijo de quién, preguntale de quién fue (con la opción 'No me acuerdo'); en ventas de feria no hace falta. Si la persona ya la conocés y tiene categoría de siempre, usala.",
     "Categorías: si un gasto no calza claramente en una categoría, usá 'desconocida' y el panel le pregunta y lo aprende. Respetá lo aprendido. Si no dice cómo pagó: SINPE. 'Datáfono' es el MiPos de BAC.",
     "Fechas: hoy es " + `${diaSemana} ${h}` + ". Entendé 'ayer', 'el sábado', 'el 15'. Montos en colones salvo que diga dólares; '45 mil' = 45000; 'un rojo' = 1000; 'una teja' = 100000.",
-    "Productos: si quiere meter un producto, llamá crear_producto con todo lo que ya dijo (en la descripción poné tela, color y detalles que mencionó); la ficha le pide la foto, las tallas, cuántas hay de cada una y el precio. Si dice cuántas le quedan de algo, usá cambiar_tallas.",
-    "Ferias: crear_feria abre la ficha con el buscador de lugares; pasá el lugar tal como lo dijo. Instagram: 'promocionar' para dar alcance a un post o historia, 'publicar_en_instagram' para subir algo nuevo.",
+    "Productos: si quiere meter una prenda NUEVA, llamá crear_producto con todo lo que ya dijo (en la descripción poné tela, color y detalles que mencionó); la ficha le pide la foto, las tallas, cuántas hay de cada una y el precio, y ahí mismo le hace la foto de estudio con IA. Si dice cuántas le quedan de algo, usá cambiar_tallas.",
+    "Reconocé las piezas aunque las diga distinto o sin tildes ('el top perú', 'la lima', 'el vestido verde de ginebra'): buscalas en la lista de piezas. Antes de abrir una ficha de producto nuevo, revisá que esa prenda no esté ya en la lista.",
+    "Colecciones: 'meter/poner/pasar/agregar [una pieza que ya está en la lista] a la colección X' es mover_a_coleccion, NUNCA crear_producto. Si la colección no existe, se crea sola al meterle la pieza; decíselo en la frase. Si quiere hacer una colección nueva, usá crear_coleccion y, si ya dijo qué piezas van, metelas de una en 'piezas'; si no lo dijo, preguntale con 'preguntar' cuáles piezas van, ofreciendo como opciones las piezas más nuevas o sin colección y 'Ninguna por ahora'. Si no queda claro si quiere crear una colección o meter una prenda a una colección que ya existe, preguntale eso mismo con opciones reales (por ejemplo «Crear la colección Viajando por el mundo» y «Meter el Top Perú a esa colección»). Usá el nombre de la colección tal como está en la lista si ya existe.",
+    "Ferias: crear_feria abre la ficha con el buscador de lugares; pasá el lugar tal como lo dijo. Instagram: 'promocionar' para dar alcance a un post o historia, 'publicar_en_instagram' para subir una foto tal cual, y 'disenar_post' cuando quiere hacer un post, arte, flyer o historia diseñada (para una feria, una colección nueva, una prenda, una oferta…): el diseñador le pide la foto, el logo de la organizadora si es una feria y lo que quiere que diga, y lo arma con su logo.",
     "Memoria: si te cuenta algo estable que conviene recordar (quién es alguien, cuánto cobra un proveedor, costumbres), guardalo con guardar_persona o recordar. Usá tu memoria para responder mejor.",
     "Preguntas sobre plata o el negocio: respondé con los números de los movimientos y resúmenes de abajo, exactos y en colones. Si no tenés el dato, decilo y ofrecé anotarlo.",
     "Si Andrea solo saluda y hay preguntas pendientes, saludala y mencioná con suavidad solo la primera pendiente.",
@@ -196,7 +209,20 @@ function convertir(nombre: string | undefined, a: Record<string, unknown>, pieza
   const id = () => crypto.randomUUID();
   const num = (v: unknown) => (typeof v === "number" && isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null);
   const txt = (v: unknown, max = 80) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
-  const pieza = (slug: unknown) => piezas.find((p) => p.slug === slug) ?? null;
+  /** La pieza por slug; si la IA mandó el nombre (o algo parecido), la busca por nombre. */
+  const pieza = (v: unknown): PiezaCtx | null => {
+    if (typeof v !== "string" || !v.trim()) return null;
+    const exacta = piezas.find((p) => p.slug === v);
+    if (exacta) return exacta;
+    const q = norm(v.replace(/-/g, " "));
+    return piezas.find((p) => norm(p.nombre) === q) ?? (buscarPieza(q, piezas as unknown as Pieza[]) as unknown as PiezaCtx | null);
+  };
+  /** La colección como está escrita si ya existe (sin importar mayúsculas ni tildes). */
+  const coleccion = (v: unknown) => {
+    const t = txt(v, 40);
+    return t ? (ctx.colecciones ?? []).find((c) => norm(c) === norm(t)) ?? t : null;
+  };
+  const lista = (v: unknown, extra?: unknown) => [...new Map([...(Array.isArray(v) ? v : []), extra].map(pieza).filter((p): p is PiezaCtx => !!p).map((p) => [p.slug, p])).values()].slice(0, 40);
   const fecha = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : hoy());
   const tallas = (v: unknown): Talla[] => (Array.isArray(v) ? v : []).slice(0, 12).flatMap((t) => {
     const o = (t ?? {}) as Record<string, unknown>;
@@ -264,12 +290,16 @@ function convertir(nombre: string | undefined, a: Record<string, unknown>, pieza
       return p && t.length ? [{ id: id(), tipo: "tallas", slug: p.slug, nombre: p.nombre, tallas: t }] : [];
     }
     case "crear_coleccion": {
-      const n = txt(a.nombre, 40);
-      return n ? [{ id: id(), tipo: "coleccion", nombre: n }] : [];
+      const n = coleccion(a.nombre);
+      if (!n) return [];
+      const nueva = !(ctx.colecciones ?? []).includes(n);
+      const mover: Res[] = lista(a.piezas).map((p) => ({ id: id(), tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: n }));
+      return [...(nueva ? [{ id: id(), tipo: "coleccion" as const, nombre: n }] : []), ...mover];
     }
     case "mover_a_coleccion": {
-      const p = pieza(a.slug), c = txt(a.coleccion, 40);
-      return p && c ? [{ id: id(), tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: c }] : [];
+      const c = a.coleccion === "" ? "" : coleccion(a.coleccion);
+      if (c === null) return [];
+      return lista(a.piezas, a.slug).map((p) => ({ id: id(), tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: c }));
     }
     case "crear_producto": {
       const t = tallas(a.tallas);
@@ -297,6 +327,13 @@ function convertir(nombre: string | undefined, a: Record<string, unknown>, pieza
     case "mejorar_foto": {
       const p = pieza(a.slug);
       return [{ tarjeta: { tipo: "foto", slug: p?.slug }, texto: p ? `Subí la foto de ${p.nombre} y la mejoramos.` : "¿De cuál pieza es la foto?", p: 2 }];
+    }
+    case "disenar_post": {
+      const tipo = ["feria", "coleccion", "prenda", "oferta", "otro"].includes(String(a.tipo)) ? (a.tipo as "feria") : undefined;
+      const fe = txt(a.feria, 80);
+      const f = fe ? ctx.ferias.find((x) => x.id === fe || norm(x.nombre).includes(norm(fe))) : undefined;
+      return [{ tarjeta: { tipo: "disenar", pre: { tipo, feria: f?.id ?? fe ?? undefined, coleccion: coleccion(a.coleccion) ?? undefined, slug: pieza(a.pieza)?.slug, texto: txt(a.texto, 400) ?? undefined } },
+        texto: "¡Hagámoslo! Escogé la foto y yo escribo los textos y lo armo con tu logo.", p: 2 }];
     }
     case "rehacer_foto_ia": {
       const p = pieza(a.slug);

@@ -11,7 +11,11 @@ export type Pregunta = {
   mov?: string;
   feria?: string;
   chat?: string; // lo que se le manda al asistente para resolverlo conversando
+  urgente?: boolean; // se muestra primero, en rojo, y no se puede dejar para otro día
 };
+
+/** Marca de «la metió sin inventario»: se pregunta como urgente hasta que diga cuántas hay. */
+export const claveInventario = (slug: string) => "panel_inv_" + slug.slice(0, 50);
 
 const dias = (a: string, b: string) => Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5);
 
@@ -20,6 +24,14 @@ export function revisar(d: Datos, piezas: Pieza[]): Pregunta[] {
   const ok = new Set((d.ajustes.panel_revision_ok as string[] | undefined) ?? []);
   const out: Pregunta[] = [];
   const visibles = piezas.filter((p) => !p.oculta);
+
+  // Urgente: piezas que metió sin decir cuántas hay (la tienda las ofrece sin saber si quedan).
+  const sinInv = (p: Pieza) => !p.tallas?.length || p.tallas.every((t) => t.existencias == null);
+  const urgentes = new Set<string>();
+  for (const p of piezas.filter((p) => d.ajustes[claveInventario(p.slug)] === true && sinInv(p))) {
+    urgentes.add(p.slug);
+    out.push({ clave: "inv-urgente-" + p.slug, que: "existencias", slug: p.slug, urgente: true, texto: `¿Cuántas hay de ${p.nombre} en cada talla? La metiste sin inventario y la tienda la está ofreciendo sin saber cuántas quedan.` });
+  }
 
   const propuestas = piezas.filter((p) => p.propuesta).length;
   if (propuestas) out.push({ clave: "fotos-ia-" + h, que: "fotos_ia", texto: propuestas === 1 ? "Tengo una foto nueva de producto hecha con IA. ¿La revisás?" : `Tengo ${propuestas} fotos nuevas de producto hechas con IA. ¿Las revisás?` });
@@ -41,7 +53,7 @@ export function revisar(d: Datos, piezas: Pieza[]): Pregunta[] {
     }
   }
 
-  const sinConteo = visibles.filter((p) => p.tallas?.length && p.tallas.every((t) => t.existencias == null));
+  const sinConteo = visibles.filter((p) => !urgentes.has(p.slug) && p.tallas?.length && p.tallas.every((t) => t.existencias == null));
   if (sinConteo.length) {
     const p = sinConteo[Number(h.replace(/-/g, "")) % sinConteo.length]; // una distinta cada día
     out.push({ clave: "existencias-" + p.slug + "-" + h.slice(0, 7), que: "existencias", slug: p.slug, texto: `¿Cuántas te quedan de ${p.nombre}? Así la tienda no vende lo que no hay.` });
@@ -50,5 +62,5 @@ export function revisar(d: Datos, piezas: Pieza[]): Pregunta[] {
   const ultimo = d.movs.find((m) => !m.anulado)?.fecha;
   if (ultimo && dias(ultimo, h) >= 7) out.push({ clave: "sin-movs-" + ultimo, que: "sin_movs", texto: `No hemos anotado nada desde el ${ultimo.slice(8)}/${ultimo.slice(5, 7)}. ¿Hubo ventas o gastos que se nos pasaron?`, chat: "Quiero anotar ventas o gastos que se me pasaron" });
 
-  return out.filter((p) => !ok.has(p.clave));
+  return out.filter((p) => p.urgente || !ok.has(p.clave));
 }
