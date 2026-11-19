@@ -36,7 +36,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, ...r });
   } catch (e) {
     const m = e instanceof ErrorMeta || e instanceof ErrorBase ? e.message : "No pude publicar.";
-    const permiso = /permission|permiso|(#10)|(#200)/i.test(m);
-    return no(permiso ? "La conexión con Instagram todavía no tiene permiso para publicar. Hay que darle el permiso «instagram_content_publish» al token en Meta." : `Instagram no aceptó la publicación: ${m}`, 502);
+    const codigo = e instanceof ErrorMeta ? e.codigo : undefined;
+    console.error("[publicar]", codigo, m);
+    // Solo los códigos 10 y 200 de Meta son de permisos; lo demás se muestra tal cual para saber qué pasó.
+    const permiso = codigo === 10 || codigo === 200 || /\(#(10|200)\)/.test(m);
+    return no(permiso ? `Instagram no dejó publicar por permisos: ${m}` : `Instagram no aceptó la publicación: ${m}`, 502);
   }
 }

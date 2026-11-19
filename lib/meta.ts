@@ -92,16 +92,36 @@ export async function historias(): Promise<Post[]> {
 }
 
 /** Publica una foto (JPEG con URL pública) en el feed o en historias. Solo se llama con la confirmación de Andrea. */
-export async function publicar(p: { imagen: string; caption: string; que: "post" | "story" }): Promise<{ id: string; permalink?: string }> {
-  const contenedor = (await graph<{ id: string }>(`${META.instagram}/media`, "POST",
-    p.que === "story" ? { image_url: p.imagen, media_type: "STORIES" } : { image_url: p.imagen, caption: p.caption })).id;
+/** Paso 1 y 2: Instagram baja la foto y la prepara (todavía no se publica nada). */
+async function preparar(p: { imagen: string; caption: string; que: "post" | "story" }): Promise<string> {
+  let contenedor: string;
+  try {
+    contenedor = (await graph<{ id: string }>(`${META.instagram}/media`, "POST",
+      p.que === "story" ? { image_url: p.imagen, media_type: "STORIES" } : { image_url: p.imagen, caption: p.caption })).id;
+  } catch (e) { console.error("[instagram] preparar:", (e as ErrorMeta).codigo, (e as Error).message); throw e; }
   for (let i = 0; i < 20; i++) {
-    const e = await graph<{ status_code?: string }>(contenedor, "GET", { fields: "status_code" });
-    if (e.status_code === "FINISHED") break;
-    if (e.status_code === "ERROR" || e.status_code === "EXPIRED") throw new ErrorMeta("Instagram no pudo procesar esa foto. Probá con otra.");
+    const e = await graph<{ status_code?: string; status?: string }>(contenedor, "GET", { fields: "status_code,status" });
+    if (e.status_code === "FINISHED") return contenedor;
+    if (e.status_code === "ERROR" || e.status_code === "EXPIRED") {
+      console.error("[instagram] procesar:", e.status_code, e.status);
+      throw new ErrorMeta(`Instagram no pudo procesar esa foto${e.status ? ` (${e.status})` : ""}. Probá con otra.`);
+    }
     await new Promise((r) => setTimeout(r, 1500));
   }
-  const id = (await graph<{ id: string }>(`${META.instagram}/media_publish`, "POST", { creation_id: contenedor })).id;
+  return contenedor;
+}
+
+/** Revisa que se pueda publicar sin publicar nada: prepara la foto en Instagram y la deja sin publicar (se descarta sola). */
+export async function probarPublicar(imagen: string) {
+  await preparar({ imagen, caption: "", que: "post" });
+  return true;
+}
+
+export async function publicar(p: { imagen: string; caption: string; que: "post" | "story" }): Promise<{ id: string; permalink?: string }> {
+  const contenedor = await preparar(p);
+  let id: string;
+  try { id = (await graph<{ id: string }>(`${META.instagram}/media_publish`, "POST", { creation_id: contenedor })).id; }
+  catch (e) { console.error("[instagram] publicar:", (e as ErrorMeta).codigo, (e as Error).message); throw e; }
   const link = await graph<{ permalink?: string }>(id, "GET", { fields: "permalink" }).catch(() => ({ permalink: undefined }));
   return { id, permalink: link.permalink };
 }

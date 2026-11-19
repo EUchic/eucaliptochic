@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ajustes, ErrorBase, guardarAccion, promos, type Promo } from "@/lib/db";
-import { alcanceEstimado, buscarIntereses, crearEnPausa, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
+import { alcanceEstimado, buscarIntereses, crearEnPausa, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, probarPublicar, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
+import { URL_BASE } from "@/lib/db";
 import { hayIA, jsonIA } from "@/lib/ia";
 import { no, permitido } from "@/lib/panel";
 import { idSeguro } from "@/lib/validar";
@@ -98,6 +99,13 @@ export async function POST(req: Request) {
     }
 
     if (b.accion === "permisos") return NextResponse.json({ permisos: await permisos() });
+    if (b.accion === "probar_publicar") {
+      // Prepara una foto de la tienda en Instagram SIN publicarla, para saber si publicar funciona.
+      const imagen = String((b as { imagen?: string }).imagen ?? "");
+      if (!imagen.startsWith(`${URL_BASE}/storage/v1/object/public/fotos/`) || !/\.jpe?g$/.test(imagen)) return no("Esa foto no es de la tienda.", 400);
+      try { await probarPublicar(imagen); return NextResponse.json({ ok: true }); }
+      catch (e) { return NextResponse.json({ ok: false, codigo: e instanceof ErrorMeta ? e.codigo : undefined, mensaje: (e as Error).message }); }
+    }
 
     if (b.accion === "segmentar") {
       // La IA mira la foto y el texto del post y propone a quién mostrárselo; los intereses son reales de Meta.
