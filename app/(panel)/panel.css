@@ -736,3 +736,46 @@ html.teclado .gu { display: none; }
 @keyframes ch-habla { from { transform: scale(0.7); opacity: 0; } }
 .ch-oyendo-ayuda { font-size: 16px; color: var(--tinta-2); max-width: 32ch; }
 @media (prefers-reduced-motion: reduce) { .ch-oyendo.is-escuchando .ch-oyendo-titulo { animation: none; } }
+
+/* ── Colecciones en el panel ── */
+.ti-vistas button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 17px; min-height: 48px; }
+.co { display: grid; gap: 12px; }
+.co-titulo { font: 500 26px/1.1 var(--titulo); }
+.co-crear { display: grid; gap: 12px; }
+.co-lista { display: grid; gap: 10px; }
+.co-col { padding: 0; overflow: hidden; }
+.co-cab { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; text-align: left; }
+.co-cab > svg { color: var(--tinta-3); transition: transform 0.2s; flex: none; }
+.co-col.is-abierta .co-cab > svg { transform: rotate(90deg); }
+.co-fotos { display: flex; flex: none; width: 104px; height: 64px; }
+.co-fotos img, .co-fotos .co-sinfoto { width: 46px; height: 64px; object-fit: cover; border-radius: 10px; border: 2px solid #fff; background: var(--fondo); }
+.co-fotos > * + * { margin-left: -18px; }
+.co-vacia { width: 104px; height: 64px; border-radius: 14px; display: grid; place-items: center; background: var(--fondo); color: var(--tinta-3); }
+.co-txt { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.co-txt b { font: 500 22px/1.15 var(--titulo); }
+.co-txt small { font-size: 15px; color: var(--tinta-2); }
+.co-cuerpo { display: grid; gap: 12px; padding: 0 16px 16px; }
+.co-piezas { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+.co-piezas li { display: grid; gap: 6px; }
+.co-piezas img, .co-piezas .co-sinfoto { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 12px; background: var(--fondo); display: grid; place-items: center; color: var(--tinta-3); }
+.co-piezas b { font-size: 14px; line-height: 1.25; }
+.co-sacar { display: inline-flex; align-items: center; gap: 4px; justify-self: start; padding: 6px 10px; border-radius: 999px; background: var(--fondo); font-size: 14px; font-weight: 600; color: var(--rojo); }
+.co-escoger { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; max-height: 440px; overflow-y: auto; padding: 3px; }
+.co-escoger button { position: relative; display: grid; gap: 4px; width: 100%; text-align: left; }
+.co-escoger img, .co-escoger .co-sinfoto { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 12px; background: var(--fondo); display: grid; place-items: center; color: var(--tinta-3); }
+.co-escoger button.is-on img, .co-escoger button.is-on .co-sinfoto { box-shadow: 0 0 0 3px var(--bosque); }
+.co-check { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--bosque); color: #fff; }
+.co-escoger b { font-size: 13px; line-height: 1.2; }
+.co-escoger small { font-size: 12px; color: var(--tinta-3); }
+.co-pie { position: sticky; bottom: calc(var(--tabs) + 8px); background: #fff; padding-top: 8px; z-index: 2; }
+.co-sin { text-align: center; }
+@media (min-width: 900px) { .co-pie { bottom: 8px; } }
+
+/* ── Arrastrar y soltar fotos ── */
+html.arrastrando label.se-suelta { outline: 2.5px dashed #8FB09F; outline-offset: 3px; transition: transform 0.12s, background-color 0.12s; }
+html.arrastrando label.se-suelta.is-encima { outline: 3px solid var(--bosque); background-color: var(--salvia-claro) !important; color: var(--bosque) !important; transform: scale(1.03); }
+html.arrastrando body::after {
+  content: "Soltá la foto encima de un cuadro de foto"; position: fixed; z-index: 200; top: 16px; left: 50%; translate: -50% 0;
+  padding: 12px 20px; border-radius: 999px; background: var(--bosque); color: #fff; font: 600 16px/1.2 var(--ui); pointer-events: none;
+  box-shadow: 0 10px 30px rgba(27, 31, 29, 0.25);
+}

@@ -10,6 +10,7 @@ import Chat from "./Chat";
 import { achicarFoto } from "./achicar";
 import FeriasPanel from "./FeriasPanel";
 import Guia from "./Guia";
+import Soltar from "./Soltar";
 import { callar } from "./hablar";
 import Icon from "./Icon";
 import { Mark } from "./Logo";
@@ -233,6 +234,7 @@ export default function Admin({ piezas, colecciones, tipos, fotos, protegido, en
           : <section className="pn-seccion"><header className="pn-titulo"><h1>Anuncios</h1><p>Las promociones se hacen cuando el panel está conectado.</p></header></section>)}
       </main>
 
+      <Soltar avisar={avisar} />
       {guia && tab === guia.seccion && <Guia key={guia.id} g={guia} voz={vozOn} cerrar={() => setGuia(null)} volver={() => { setGuia(null); irA("inicio"); }} />}
 
       <nav className="pn-tabs" aria-label="Secciones">

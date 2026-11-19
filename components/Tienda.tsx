@@ -5,6 +5,7 @@ import { fmt, norm, type Accion, type Datos, type Pieza, type Talla } from "@/li
 import type { BorradorPieza } from "@/lib/cerebro";
 import Icon from "./Icon";
 import FotosSitio from "./FotosSitio";
+import ColeccionesPanel from "./ColeccionesPanel";
 import { achicarFoto } from "./achicar";
 import { avisarGuia } from "@/lib/guias";
 import { claveInventario } from "@/lib/revision";
@@ -354,6 +355,7 @@ export default function Tienda({ todas, colecciones, tipos, guardar, subir, foto
   useEffect(() => { if (abrir) setTimeout(() => document.getElementById("pz-" + abrir)?.scrollIntoView({ behavior: "smooth", block: "start" }), 150); }, [abrir]);
   const [nueva, setNueva] = useState(false);
   const [filtro, setFiltro] = useState<"todas" | "sin-foto" | "escondidas">("todas");
+  const [vistaTienda, setVistaTienda] = useState<"prendas" | "colecciones">("prendas");
   const vista = todas.filter((p) => norm(p.nombre).includes(norm(q)) && (filtro === "todas" || (filtro === "sin-foto" ? !p.foto : p.oculta)));
   return (
     <section className="pn-seccion">
@@ -362,6 +364,12 @@ export default function Tienda({ todas, colecciones, tipos, guardar, subir, foto
         <p>{todas.filter((p) => !p.oculta).length} piezas en la tienda. Tocá una para cambiarle precio, tallas o fotos.</p>
       </header>
 
+      <div className="pn-seg ti-vistas" role="tablist">
+        <button role="tab" aria-selected={vistaTienda === "prendas"} className={vistaTienda === "prendas" ? "is-on" : ""} onClick={() => setVistaTienda("prendas")}><Icon n="percha" s={20} />Prendas</button>
+        <button role="tab" data-guia="vista-colecciones" aria-selected={vistaTienda === "colecciones"} className={vistaTienda === "colecciones" ? "is-on" : ""} onClick={() => setVistaTienda("colecciones")}><Icon n="capas" s={20} />Colecciones</button>
+      </div>
+
+      {vistaTienda === "colecciones" ? <ColeccionesPanel todas={todas} colecciones={colecciones} guardar={guardar} /> : <>
       {nueva ? (
         <div className="pn-tarjeta"><FichaProducto piezas={todas} colecciones={colecciones} tipos={tipos} guardar={guardar} subir={subir} avisar={avisar} refrescar={refrescar} listo={(t) => { setNueva(false); avisar(t); refrescar(); }} cancelar={() => setNueva(false)} /></div>
       ) : <button className="pn-btn is-grande" data-guia="nuevo" onClick={() => setNueva(true)}><Icon n="mas" s={24} />Meter un producto nuevo</button>}
@@ -404,6 +412,7 @@ export default function Tienda({ todas, colecciones, tipos, guardar, subir, foto
           </ul>
         </>
       )}
+      </>}
     </section>
   );
 }

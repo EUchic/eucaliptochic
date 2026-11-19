@@ -12,7 +12,7 @@ import type { Seccion } from "./cerebro";
 
 export const TAREAS = [
   "subir_foto", "rehacer_foto", "revisar_fotos_ia", "foto_de_la_pagina", "tallas", "esconder_pieza", "quitar_foto",
-  "producto_nuevo", "feria_nueva", "cambiar_feria", "borrar_feria", "anotar_plata", "analisis_del_mes", "promocionar", "publicar",
+  "producto_nuevo", "ver_colecciones", "feria_nueva", "cambiar_feria", "borrar_feria", "anotar_plata", "analisis_del_mes", "promocionar", "publicar",
 ] as const;
 export type Tarea = (typeof TAREAS)[number];
 export type PedidoGuia = { tarea?: Tarea; slug?: string; feria?: string };
@@ -22,7 +22,7 @@ export type Guia = { id: string; tarea: Tarea; seccion: Seccion; titulo: string;
 
 const SECCION: Record<Tarea, Seccion> = {
   subir_foto: "tienda", rehacer_foto: "tienda", revisar_fotos_ia: "tienda", foto_de_la_pagina: "tienda", tallas: "tienda",
-  esconder_pieza: "tienda", quitar_foto: "tienda", producto_nuevo: "tienda",
+  esconder_pieza: "tienda", quitar_foto: "tienda", producto_nuevo: "tienda", ver_colecciones: "tienda",
   feria_nueva: "ferias", cambiar_feria: "ferias", borrar_feria: "ferias",
   anotar_plata: "plata", analisis_del_mes: "plata", promocionar: "anuncios", publicar: "anuncios",
 };
@@ -76,6 +76,10 @@ export function armarGuia(tarea: Tarea, c: Contexto): Guia {
       { texto: "Tocá «Meter un producto nuevo».", sel: '[data-guia="nuevo"]', clic: '[data-guia="nuevo"]' },
       { texto: "Llená la ficha: la foto, el nombre, el tipo, el precio y las tallas. Al final tocá «Guardar producto».", sel: ".ti-ficha", evento: ["accion:pieza"] },
     ], "¡Listo! El producto ya está en la tienda.");
+    case "ver_colecciones": return g("Las colecciones", [
+      { texto: "Tocá «Colecciones» arriba.", sel: '[data-guia="vista-colecciones"]', clic: '[data-guia="vista-colecciones"]' },
+      { texto: "Aquí está cada colección con sus prendas. Tocá una para verla, meterle prendas o sacarlas, o tocá «Crear una colección».", sel: '[data-guia="colecciones"]' },
+    ], "¡Listo! Cuando una colección tiene prendas, sale en la página.");
     case "feria_nueva": return g("Anotar una feria", [
       { texto: "Tocá «Agregar una feria».", sel: '[data-guia="nueva-feria"]', clic: '[data-guia="nueva-feria"]' },
       { texto: "Poné el nombre, la fecha y buscá el lugar. Después tocá «Guardar feria».", sel: ".pn-ficha", evento: ["accion:feria"] },
