@@ -51,6 +51,19 @@ const de = <T extends string>(v: unknown, lista: readonly T[], nombre: string) =
   return v as T;
 };
 
+const tallas = (v: unknown) => {
+  if (!Array.isArray(v) || v.length > 12) throw new Invalida("Las tallas no se ven bien.");
+  const vistas = new Set<string>();
+  return v.map((t) => {
+    const o = (t ?? {}) as Record<string, unknown>;
+    const talla = texto(o.talla, 30, "la talla");
+    if (vistas.has(talla.toLowerCase())) throw new Invalida(`La talla ${talla} está repetida.`);
+    vistas.add(talla.toLowerCase());
+    const ex = o.existencias == null || o.existencias === "" ? null : Math.round(numero(o.existencias, 0, 10_000, "número de piezas"));
+    return { talla, existencias: ex };
+  });
+};
+
 /** categorias: las que Andrea ya agregó; enLote: las que se crean en este mismo envío (con "aprender"). */
 type Extra = { categorias?: { nombre: string; sentido: Sentido }[]; enLote?: { nombre: string; sentido: Sentido }[] };
 
@@ -70,6 +83,7 @@ export function validar(x: unknown, extra: Extra = {}): Accion {
         concepto: texto(a.concepto, 300, "el detalle", true) || String(a.categoria),
         feria: texto(a.feria, 80, "la feria", true) || undefined,
         fecha: fecha(a.fecha),
+        persona: texto(a.persona, 80, "el nombre", true) || undefined,
       };
     }
     case "precio": return { id, tipo: "precio", slug: slug(a.slug), nombre: texto(a.nombre, 80, "el nombre"), precio: Math.round(numero(a.precio, 0, 5_000_000, "precio")) };
@@ -81,8 +95,47 @@ export function validar(x: unknown, extra: Extra = {}): Accion {
       tipoPieza: de(a.tipoPieza ?? "Blusas", TIPOS_PIEZA, "el tipo de pieza"),
       precio: Math.round(numero(a.precio ?? 0, 0, 5_000_000, "precio")),
       coleccion: texto(a.coleccion, 60, "la colección", true) || undefined,
+      slug: a.slug ? slug(a.slug) : undefined,
+      descripcion: texto(a.descripcion, 600, "la descripción", true) || undefined,
+      tallas: a.tallas == null ? undefined : tallas(a.tallas),
     };
-    case "feria": return { id, tipo: "feria", nombre: texto(a.nombre, 80, "el nombre de la feria"), fecha: fecha(a.fecha), lugar: texto(a.lugar, 120, "el lugar", true) || undefined };
+    case "tallas": return { id, tipo: "tallas", slug: slug(a.slug), nombre: texto(a.nombre, 80, "el nombre"), tallas: tallas(a.tallas) };
+    case "descripcion": return { id, tipo: "descripcion", slug: slug(a.slug), nombre: texto(a.nombre, 80, "el nombre"), descripcion: texto(a.descripcion, 600, "la descripción", true) };
+    case "feria": {
+      const conPunto = a.lat != null && a.lng != null;
+      return {
+        id, tipo: "feria", nombre: texto(a.nombre, 80, "el nombre de la feria"), fecha: fecha(a.fecha), lugar: texto(a.lugar, 120, "el lugar", true) || undefined,
+        direccion: texto(a.direccion, 200, "la dirección", true) || undefined,
+        lat: conPunto ? coordenada(a.lat, 90) : undefined, lng: conPunto ? coordenada(a.lng, 180) : undefined,
+      };
+    }
+    case "persona": return {
+      id, tipo: "persona", nombre: texto(a.nombre, 80, "el nombre"),
+      rol: a.rol ? de(a.rol, ["clienta", "proveedor", "otro"] as const, "el rol") : undefined,
+      categoria: texto(a.categoria, 40, "la categoría", true) || undefined, notas: texto(a.notas, 300, "la nota", true) || undefined,
+    };
+    case "recordar": {
+      const t = texto(a.texto, 300, "lo que hay que recordar");
+      if (t.length < 2) throw new Invalida("Eso es muy corto para recordarlo.");
+      return { id, tipo: "recordar", texto: t };
+    }
+    case "olvidar": {
+      const memoria = String(a.memoria ?? "");
+      if (!UUID.test(memoria)) throw new Invalida("No encontré eso.");
+      return { id, tipo: "olvidar", memoria, texto: texto(a.texto, 300, "el texto", true) };
+    }
+    case "ajuste": {
+      const clave = String(a.clave ?? "");
+      if (!/^(panel_|analisis_)[a-z0-9_-]{1,60}$/.test(clave)) throw new Invalida("Ajuste no permitido.");
+      const valor = a.valor ?? null;
+      if (JSON.stringify(valor).length > 8000) throw new Invalida("Ese ajuste es muy grande.");
+      return { id, tipo: "ajuste", clave, valor };
+    }
+    case "foto_aprobar": case "foto_descartar": {
+      const foto_id = String(a.foto_id ?? "");
+      if (!UUID.test(foto_id)) throw new Invalida("No encontré esa foto.");
+      return { id, tipo: a.tipo, foto_id, slug: slug(a.slug), nombre: texto(a.nombre, 80, "el nombre") };
+    }
     case "foto": {
       const foto = String(a.foto ?? "");
       if (!FOTOS.some((f) => f.id === foto)) throw new Invalida("No encontré esa foto.");
@@ -130,4 +183,4 @@ export function validar(x: unknown, extra: Extra = {}): Accion {
 }
 
 /** Acciones que cambian lo que se ve en la tienda (para refrescar la página). */
-export const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "quitar_foto", "feria", "feria_lugar", "feria_sin_foto", "borrar_feria"].includes(a.tipo);
+export const tocaTienda = (a: Accion) => ["precio", "visible", "mover", "pieza", "foto", "coleccion", "quitar_foto", "feria", "feria_lugar", "feria_sin_foto", "borrar_feria", "tallas", "descripcion", "foto_aprobar"].includes(a.tipo);

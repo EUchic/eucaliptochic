@@ -6,22 +6,22 @@ import type { ReactNode } from "react";
  * Vista previa con forma de post patrocinado de Instagram, para que Andrea vea cómo le va a salir a la gente.
  * Es solo una vista: la publicación real la arma Meta con el post original.
  */
-export default function PostIG({ imagen, texto, pie, compacto, children }: {
-  imagen: string | null; texto: string | null; pie?: ReactNode; compacto?: boolean; children?: ReactNode;
+export default function PostIG({ imagen, texto, pie, compacto, historia, publicacion, children }: {
+  imagen: string | null; texto: string | null; pie?: ReactNode; compacto?: boolean; historia?: boolean; publicacion?: boolean; children?: ReactNode;
 }) {
   return (
-    <article className={"ig" + (compacto ? " is-compacto" : "")} aria-label="Así se ve el anuncio en Instagram">
+    <article className={"ig" + (compacto ? " is-compacto" : "") + (historia ? " is-historia" : "")} aria-label="Así se ve en Instagram">
       <header className="ig-cab">
         <span className="ig-avatar" aria-hidden>EU</span>
-        <span className="ig-quien"><b>eucaliptochicr</b><small>Publicidad</small></span>
+        <span className="ig-quien"><b>eucaliptochicr</b><small>{publicacion ? "Ahora" : "Publicidad"}</small></span>
         <span className="ig-mas" aria-hidden>•••</span>
       </header>
       <div className="ig-media">
         {imagen ? <img src={imagen} alt="" loading="lazy" /> : <span className="ig-sin">Sin foto</span>}
         {children}
       </div>
-      <div className="ig-cta"><span>Enviar mensaje</span><svg viewBox="0 0 24 24" aria-hidden><path d="m9 6 6 6-6 6" /></svg></div>
-      {!compacto && (
+      {!publicacion && <div className="ig-cta"><span>Enviar mensaje</span><svg viewBox="0 0 24 24" aria-hidden><path d="m9 6 6 6-6 6" /></svg></div>}
+      {!compacto && !historia && (
         <div className="ig-acciones" aria-hidden>
           <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z" /></svg>
           <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3.3-6.5L20 4l-.9 3.6A8 8 0 0 1 20 12Z" /></svg>

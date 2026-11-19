@@ -54,6 +54,9 @@ type EstadoCrudo = {
   fotos: Record<string, string>;
   categorias?: Datos["categorias"];
   aprendido?: Datos["aprendido"];
+  personas?: Datos["personas"];
+  memoria?: Datos["memoria"];
+  ajustes?: Datos["ajustes"];
 };
 
 /** Todo lo que el panel necesita para pintarse, ya en el formato del panel. */
@@ -63,6 +66,8 @@ export async function estadoPanel(): Promise<{ piezas: Pieza[]; colecciones: str
     piezas: e.piezas.map((p) => ({
       ...p, precio: Number(p.precio), foto: p.foto ? img(p.foto, 300) : "", fotos: Number(p.fotos),
       lista: (p.lista ?? []).map((f) => ({ id: f.id, url: img(f.url, 300) })),
+      propuesta: p.propuesta ? { id: p.propuesta.id, url: img(p.propuesta.url, 800), grande: img(p.propuesta.url, 1600) } : null,
+      tallas: p.tallas ?? [], descripcion: p.descripcion ?? null,
     })),
     colecciones: e.colecciones,
     datos: {
@@ -76,13 +81,16 @@ export async function estadoPanel(): Promise<{ piezas: Pieza[]; colecciones: str
       fotos: e.fotos,
       categorias: e.categorias ?? [],
       aprendido: e.aprendido ?? [],
+      personas: e.personas ?? [],
+      memoria: e.memoria ?? [],
+      ajustes: e.ajustes ?? {},
     },
   };
 }
 
 /** Guarda una acción ya validada. La base ignora la misma acción si llega dos veces (mismo id). */
 export const guardarAccion = (
-  a: (Accion & { crc?: number; tipoCambio?: number }) | { id: string; tipo: "foto_nueva"; slug: string; url: string } | { id: string; tipo: "feria_foto"; feria: string; url: string },
+  a: (Accion & { crc?: number; tipoCambio?: number }) | { id: string; tipo: "foto_nueva" | "foto_propuesta"; slug: string; url: string } | { id: string; tipo: "feria_foto"; feria: string; url: string },
 ) =>
   rpc<{ ok: boolean; repetida?: boolean }>("aplicar_accion", { a }, { secreta: true });
 
@@ -151,6 +159,14 @@ export const ajustes = {
 };
 
 /** Categorías que Andrea agregó (para validar lo que llega del panel). */
+/** Una pieza con sus fotos (las aprobadas/originales, de primera la portada), para hacerle foto de producto. */
+export async function piezaConFotos(slug: string) {
+  const [p] = await rest<{ id: string; slug: string; nombre: string; tipo: string; descripcion: string | null }[]>(`piezas?select=id,slug,nombre,tipo,descripcion&slug=eq.${encodeURIComponent(slug)}&limit=1`);
+  if (!p) return null;
+  const fotos = await rest<{ url: string; estado: string }[]>(`fotos?select=url,estado&pieza_id=eq.${p.id}&estado=neq.propuesta&order=orden.asc,creado.asc&limit=4`);
+  return { ...p, fotos: fotos.map((f) => f.url) };
+}
+
 export const categoriasPropias = () => rest<{ nombre: string; sentido: "ingreso" | "gasto" }[]>("categorias?select=nombre,sentido").catch(() => []);
 
 /** Guarda un aviso de un proveedor de pagos tal como llegó (si ya estaba, no lo repite). */

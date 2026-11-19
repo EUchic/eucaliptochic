@@ -57,7 +57,60 @@ async function graph<T>(ruta: string, metodo: "GET" | "POST" | "DELETE" = "GET",
   return j;
 }
 
-export type Post = { id: string; caption: string; tipo: string; miniatura: string; permalink: string; fecha: string };
+export type Post = { id: string; caption: string; tipo: string; miniatura: string; permalink: string; fecha: string; story?: boolean };
+export type Interes = { id: string; name: string };
+export type Publico = { texto: string; edad_min: number; edad_max: number; intereses: Interes[] };
+
+/** Público de una promoción: lo que propuso la IA (como sugerencia para Meta) y el lugar donde se ve. */
+export function segmentacion(publico: Publico | null, que: "post" | "story") {
+  const base = { ...PUBLICO, instagram_positions: que === "story" ? ["story"] : PUBLICO.instagram_positions };
+  if (!publico) return base;
+  const min = Math.max(18, Math.min(65, Math.round(publico.edad_min)));
+  const max = Math.max(min, Math.min(65, Math.round(publico.edad_max)));
+  return {
+    ...base,
+    age_min: Math.min(25, min), age_max: 65, age_range: [min, max],
+    ...(publico.intereses.length ? { flexible_spec: [{ interests: publico.intereses.slice(0, 10).map((i) => ({ id: i.id, name: i.name })) }] } : {}),
+  };
+}
+
+/** Intereses reales de Meta para una palabra ("moda", "boutiques"…). */
+export async function buscarIntereses(termino: string): Promise<(Interes & { audiencia?: number })[]> {
+  const j = await graph<{ data: { id: string; name: string; audience_size_upper_bound?: number }[] }>("search", "GET", { type: "adinterest", q: termino, limit: "3", locale: "es_LA" });
+  return (j.data ?? []).map((i) => ({ id: String(i.id), name: i.name, audiencia: i.audience_size_upper_bound }));
+}
+
+/** Historias que están en vivo ahora (duran 24 horas). Solo esas se pueden promocionar. */
+export async function historias(): Promise<Post[]> {
+  const j = await graph<{ data: { id: string; caption?: string; media_type: string; thumbnail_url?: string; media_url?: string; permalink: string; timestamp: string }[] }>(
+    `${META.instagram}/stories`, "GET", { fields: "id,caption,media_type,thumbnail_url,media_url,permalink,timestamp" },
+  );
+  return (j.data ?? []).map((m) => ({
+    id: m.id, caption: (m.caption ?? "").trim(), tipo: m.media_type === "VIDEO" ? "Historia en video" : "Historia",
+    miniatura: m.thumbnail_url || m.media_url || "", permalink: m.permalink, fecha: m.timestamp, story: true,
+  })).filter((m) => m.miniatura);
+}
+
+/** Publica una foto (JPEG con URL pública) en el feed o en historias. Solo se llama con la confirmación de Andrea. */
+export async function publicar(p: { imagen: string; caption: string; que: "post" | "story" }): Promise<{ id: string; permalink?: string }> {
+  const contenedor = (await graph<{ id: string }>(`${META.instagram}/media`, "POST",
+    p.que === "story" ? { image_url: p.imagen, media_type: "STORIES" } : { image_url: p.imagen, caption: p.caption })).id;
+  for (let i = 0; i < 20; i++) {
+    const e = await graph<{ status_code?: string }>(contenedor, "GET", { fields: "status_code" });
+    if (e.status_code === "FINISHED") break;
+    if (e.status_code === "ERROR" || e.status_code === "EXPIRED") throw new ErrorMeta("Instagram no pudo procesar esa foto. Probá con otra.");
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  const id = (await graph<{ id: string }>(`${META.instagram}/media_publish`, "POST", { creation_id: contenedor })).id;
+  const link = await graph<{ permalink?: string }>(id, "GET", { fields: "permalink" }).catch(() => ({ permalink: undefined }));
+  return { id, permalink: link.permalink };
+}
+
+/** Permisos que tiene la conexión con Meta (para saber si puede publicar). */
+export async function permisos(): Promise<string[]> {
+  const j = await graph<{ data: { permission: string; status: string }[] }>("me/permissions", "GET");
+  return (j.data ?? []).filter((x) => x.status === "granted").map((x) => x.permission);
+}
 
 /** Últimos posts y reels del Instagram de la marca (las historias no se promocionan desde aquí). */
 export async function postsRecientes(): Promise<Post[]> {
@@ -106,7 +159,7 @@ export type Ids = { campaign_id: string; adset_id: string; ad_id: string };
  * Crea la promoción completa en PAUSA (campaña, conjunto con presupuesto TOTAL y fechas, anuncio con el post).
  * Con presupuesto total, Meta nunca gasta más que `total` colones. Si algo falla, borra lo que alcanzó a crear.
  */
-export async function crearEnPausa(p: { nombre: string; mediaId: string; inicio: Date; fin: Date; total: number }): Promise<Ids> {
+export async function crearEnPausa(p: { nombre: string; mediaId: string; inicio: Date; fin: Date; total: number; publico?: Publico | null; que?: "post" | "story" }): Promise<Ids> {
   const act = `act_${META.cuenta}`;
   let campana = "";
   try {
@@ -119,7 +172,7 @@ export async function crearEnPausa(p: { nombre: string; mediaId: string; inicio:
       lifetime_budget: Math.round(p.total),
       start_time: p.inicio.toISOString(), end_time: p.fin.toISOString(),
       billing_event: "IMPRESSIONS", optimization_goal: "CONVERSATIONS", destination_type: "INSTAGRAM_DIRECT",
-      bid_strategy: "LOWEST_COST_WITHOUT_CAP", promoted_object: { page_id: META.pagina }, targeting: PUBLICO,
+      bid_strategy: "LOWEST_COST_WITHOUT_CAP", promoted_object: { page_id: META.pagina }, targeting: segmentacion(p.publico ?? null, p.que ?? "post"),
     })).id;
     const creativo = (await graph<{ id: string }>(`${act}/adcreatives`, "POST", {
       name: p.nombre, object_id: META.pagina, instagram_user_id: META.instagram, source_instagram_media_id: p.mediaId,

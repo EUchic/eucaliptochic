@@ -1,261 +1,47 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Icon from "./Icon";
-import PostIG from "./PostIG";
-import type { Feria } from "@/lib/asistente";
+import type { Feria, Pieza } from "@/lib/asistente";
 import {
-  apiAnuncios, arranques, calendario, conIva, DIAS, fechaCorta, hoyCR, MONTOS, nidPromo, plata, primeraLinea, RECOMENDADO, TOPES,
+  apiAnuncios, arranques, calendario, conIva, DIAS, MONTOS, nidPromo, plata, primeraLinea, RECOMENDADO, TOPES,
   type Arranque, type InfoAnuncios, type Post, type Promo,
 } from "@/lib/promo";
+import Icon from "./Icon";
+import PostIG from "./PostIG";
 
-// Promociones de Instagram, paso a paso y en palabras simples.
-// Nada se cobra sin que Andrea toque "Sí, autorizo" en la última pantalla.
+type Publico = { texto: string; edad_min: number; edad_max: number; intereses: { id: string; name: string }[] };
+type Avisar = (m: string, malo?: boolean) => void;
 
-type Vista = "inicio" | "tope" | "post" | "cuando" | "cuanto" | "revisar" | "listo";
-const PASOS: Vista[] = ["post", "cuando", "cuanto", "revisar"];
-
-export default function Anuncios({ ferias, arrancar, alArrancar, avisar }: {
-  ferias: Feria[]; arrancar: boolean; alArrancar: () => void; avisar: (m: string, mal?: boolean) => void;
-}) {
-  const [info, setInfo] = useState<InfoAnuncios | null>(null);
-  const [error, setError] = useState("");
-  const [vista, setVista] = useState<Vista>("inicio");
-  const [posts, setPosts] = useState<Post[] | null>(null);
-  const [post, setPost] = useState<Post | null>(null);
-  const [desde, setDesde] = useState<Arranque | null>(null);
-  const [dias, setDias] = useState(5);
-  const [porDia, setPorDia] = useState(RECOMENDADO);
-  const [otro, setOtro] = useState("");
-  const [idPromo, setIdPromo] = useState("");
-  const [confirmar, setConfirmar] = useState(false);
-  const [enviando, setEnviando] = useState(false);
-  const [topeOtro, setTopeOtro] = useState("");
-  const [parando, setParando] = useState<string | null>(null);
-
-  const cargar = useCallback(() => apiAnuncios().then(setInfo).catch((e) => setError(e.message)), []);
-  useEffect(() => { cargar(); }, [cargar]);
-
-  const opciones = useMemo(() => arranques(ferias), [ferias]);
-  const empezar = useCallback(() => {
-    setPost(null); setDesde(opciones[0]); setDias(5); setPorDia(RECOMENDADO); setOtro(""); setIdPromo(nidPromo());
-    setVista(info?.tope == null ? "tope" : "post");
-  }, [info, opciones]);
-
-  // Si Andrea llegó desde una sugerencia ("¿Querés promocionar…?"), abrimos directo el paso 1.
-  useEffect(() => { if (arrancar && info?.conectado) { empezar(); alArrancar(); } }, [arrancar, info, empezar, alArrancar]);
-
-  useEffect(() => {
-    if (vista !== "post" || posts) return;
-    apiAnuncios<{ posts: Post[] }>(undefined, "?que=posts").then((j) => setPosts(j.posts)).catch((e) => { setError(e.message); setPosts([]); });
-  }, [vista, posts]);
-
-  const cal = desde ? calendario(desde, dias) : null;
-  const total = cal ? porDia * cal.dias : 0;
-  const restante = info?.restante ?? 0;
-  const cabe = conIva(total) <= restante;
-
-  async function guardarTope(monto: number) {
-    if (!(monto > 0)) return;
-    try {
-      const j = await apiAnuncios({ accion: "tope", monto });
-      setInfo(j); avisar(`Listo: tu tope del mes es ${plata(monto)}.`);
-      setVista(idPromo ? "post" : "inicio");
-    } catch (e) { avisar((e as Error).message, true); }
-  }
-
-  async function lanzar() {
-    if (!post || !cal) return;
-    setEnviando(true);
-    try {
-      const j = await apiAnuncios({ accion: "promocionar", confirmo: true, id: idPromo, mediaId: post.id, porDia, dias: cal.dias, inicio: cal.inicio });
-      setInfo(j); setConfirmar(false); setVista("listo");
-      avisar("¡Listo! Tu promoción quedó lista.");
-    } catch (e) {
-      setConfirmar(false); avisar((e as Error).message, true);
-    } finally {
-      setEnviando(false);
-    }
-  }
-
-  async function parar(p: Promo) {
-    try { setInfo(await apiAnuncios({ accion: "detener", id: p.id })); setParando(null); avisar("Promoción detenida."); } catch (e) { avisar((e as Error).message, true); }
-  }
-
-  const cab = (titulo: string, ayuda?: string) => (
-    <header className="pn-cabeza">
-      <h1>{titulo}</h1>
-      {ayuda && <p>{ayuda}</p>}
-    </header>
-  );
-  if (error && !info) return <section className="pn-seccion">{cab("Anuncios")}<p className="pn-vacio">{error}</p></section>;
-  if (!info) return <section className="pn-seccion">{cab("Anuncios")}<p className="pn-vacio">Cargando…</p></section>;
-  if (!info.conectado) return (
-    <section className="pn-seccion">{cab("Anuncios", "Todavía falta conectar Instagram con el panel. Apenas esté, aquí vas a poder promocionar tus posts.")}</section>
-  );
-
-  const paso = PASOS.indexOf(vista);
-  const atras = () => setVista(paso > 0 ? PASOS[paso - 1] : "inicio");
-  const pasos = (titulo: string, ayuda?: string) => (
-    <>
-      <div className="pn-pasos">
-        <button className="pn-atras" onClick={atras}><Icon n="atras" s={22} />Atrás</button>
-        <ol aria-label={`Paso ${paso + 1} de 4`}>{PASOS.map((p, i) => <li key={p} className={i <= paso ? "is-hecho" : ""} />)}</ol>
+/** Hoja de confirmación de cobro o publicación: siempre la última palabra es de Andrea. */
+export function Confirmacion({ titulo, texto, si, no, enviando, boton = "Sí, autorizo" }: { titulo: string; texto: React.ReactNode; si: () => void; no: () => void; enviando: boolean; boton?: string }) {
+  return createPortal(
+    <div className="pn-velo" role="dialog" aria-modal="true" aria-label={titulo} onClick={() => !enviando && no()}>
+      <div className="pn-hoja" onClick={(e) => e.stopPropagation()}>
+        <span className="pn-agarre" aria-hidden />
+        <h2>{titulo}</h2>
+        <div className="pn-hoja-txt">{texto}</div>
+        <div className="pn-botones is-columna">
+          <button className="pn-btn is-grande" disabled={enviando} onClick={si}><Icon n="check" s={24} />{enviando ? "Un momento…" : boton}</button>
+          <button className="pn-btn is-gris is-grande" disabled={enviando} onClick={no}>No, todavía no</button>
+        </div>
       </div>
-      {cab(titulo, ayuda)}
-    </>
-  );
-
-  return (
-    <section className="pn-seccion an">
-      {vista === "inicio" && (
-        <>
-          {cab("Anuncios", "Hacé que más gente vea un post de Instagram y te escriba. Vos decidís cuánto, y nada se cobra sin que lo confirmés.")}
-          <div className="pn-tarjeta an-tope">
-            {info.tope == null ? (
-              <p>Primero poné cuánto es lo máximo que querés gastar al mes.</p>
-            ) : (
-              <>
-                <p>Este mes llevás <b>{plata(info.usado ?? 0)}</b> de tu tope de <b>{plata(info.tope)}</b></p>
-                <i className="an-barra"><span style={{ width: `${Math.min(100, ((info.usado ?? 0) / Math.max(1, info.tope)) * 100)}%` }} /></i>
-              </>
-            )}
-            <button className="pn-link" onClick={() => setVista("tope")}>{info.tope == null ? "Poner mi tope" : "Cambiar mi tope"}</button>
-          </div>
-          <button className="pn-boton is-grande" onClick={empezar}><Icon n="megafono" s={26} />Promocionar un post</button>
-
-          {!!info.promos?.length && <h2 className="pn-sub">Tus promociones</h2>}
-          <ul className="an-lista">
-            {info.promos?.map((p) => (
-              <li key={p.id}>
-                <PostIG compacto imagen={p.miniatura} texto={primeraLinea(p.caption)} pie={
-                  <>
-                    <span className={"an-estado is-" + p.estado}>
-                      {p.estado === "activa" ? (Date.parse(p.inicio) > Date.now() + 2 * 3600e3 ? `Empieza el ${fechaCorta(p.inicio)}` : `Corriendo hasta el ${fechaCorta(p.fin)}`)
-                        : p.estado === "terminada" ? `Terminó el ${fechaCorta(p.fin)}`
-                        : p.estado === "detenida" ? "Detenida"
-                        : p.estado === "creando" ? "Preparándose…"
-                        : "No se pudo crear (no se cobró nada)"}
-                    </span>
-                    {p.estado !== "error" && p.estado !== "creando" && (
-                      <dl className="an-numeros">
-                        <div><dt>Le llegó a</dt><dd>{p.alcance.toLocaleString("es-CR")}</dd></div>
-                        <div><dt>Te escribieron</dt><dd>{p.mensajes}</dd></div>
-                        <div><dt>Gastado</dt><dd>{plata(conIva(Number(p.gastado)))}</dd></div>
-                      </dl>
-                    )}
-                    {p.estado === "activa" && (parando === p.id ? (
-                      <div className="fp-seguro">
-                        <p>¿Detenerla? Deja de mostrarse y de cobrar desde ya.</p>
-                        <div className="fp-botones"><button className="pn-boton is-peligro" onClick={() => parar(p)}>Sí, detener</button><button className="pn-link" onClick={() => setParando(null)}>No</button></div>
-                      </div>
-                    ) : <button className="pn-link is-peligro" onClick={() => setParando(p.id)}>Detener</button>)}
-                  </>
-                } />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {vista === "tope" && (
-        <>
-          <button className="pn-atras" onClick={() => setVista("inicio")}><Icon n="atras" s={22} />Atrás</button>
-          {cab("¿Cuánto es lo máximo al mes?", "El sistema nunca se pasa de este monto, ya contando el 13% de IVA que cobra el banco. Lo podés cambiar cuando querás.")}
-          <div className="pn-opciones">
-            {TOPES.map((t) => <button key={t} className={info.tope === t ? "is-on" : ""} onClick={() => guardarTope(t)}><b>{plata(t)}</b><span>al mes</span></button>)}
-          </div>
-          <form className="pn-otro" onSubmit={(e) => { e.preventDefault(); guardarTope(Number(topeOtro.replace(/\D/g, ""))); }}>
-            <label className="pn-campo"><span>Otro monto</span><input inputMode="numeric" value={topeOtro} onChange={(e) => setTopeOtro(e.target.value)} placeholder="₡" /></label>
-            <button className="pn-boton" disabled={!topeOtro.replace(/\D/g, "")}>Guardar</button>
-          </form>
-        </>
-      )}
-
-      {vista === "post" && (
-        <>
-          {pasos("¿Qué post querés que vea más gente?", "Tocá el post. Funcionan mejor los que muestran una pieza puesta y se ve bien el color.")}
-          <Rejilla posts={posts} elegido={post?.id} elegir={(p) => { setPost(p); setVista("cuando"); }} />
-        </>
-      )}
-
-      {vista === "cuando" && desde && cal && (
-        <>
-          {pasos("¿Cuándo y por cuántos días?", "Lo ideal es que termine el día de una feria, para que la gente llegue.")}
-          <h3 className="pn-pregunta">Empieza</h3>
-          <div className="pn-chips">
-            {opciones.map((o) => <button key={o.clave} className={desde.clave === o.clave ? "is-on" : ""} onClick={() => setDesde(o)}>{o.etiqueta}</button>)}
-          </div>
-          <h3 className="pn-pregunta">Cuántos días</h3>
-          <div className="pn-chips is-numeros">
-            {DIAS.map((n) => <button key={n} className={dias === n ? "is-on" : ""} onClick={() => setDias(n)}>{n} {n === 1 ? "día" : "días"}</button>)}
-          </div>
-          <p className="pn-tarjeta an-calendario"><Icon n="check" s={22} />{cal.texto}{cal.dias !== dias && " (es lo que alcanza antes de la feria)"}</p>
-          <button className="pn-boton is-grande" onClick={() => setVista("cuanto")}>Seguir</button>
-        </>
-      )}
-
-      {vista === "cuanto" && cal && (
-        <>
-          {pasos("¿Cuánto por día?", `Con poquito ya se nota. Te recomiendo ${plata(RECOMENDADO)} por día.`)}
-          <div className="pn-opciones">
-            {MONTOS.map((m) => (
-              <button key={m} className={porDia === m && !otro ? "is-on" : ""} onClick={() => { setPorDia(m); setOtro(""); }}>
-                <b>{plata(m)}</b><span>{m === RECOMENDADO ? "Recomendado" : "por día"}</span>
-              </button>
-            ))}
-          </div>
-          <label className="pn-campo"><span>Otro monto por día</span>
-            <input inputMode="numeric" value={otro} placeholder="₡" onChange={(e) => { setOtro(e.target.value); const v = Number(e.target.value.replace(/\D/g, "")); if (v >= 1000 && v <= 20000) setPorDia(v); }} />
-          </label>
-          <div className="pn-tarjeta an-cuenta">
-            <p>En {cal.dias} {cal.dias === 1 ? "día" : "días"}, Meta cobra como máximo <b>{plata(total)}</b>.</p>
-            <p>Con el 13% de IVA del banco: <b>{plata(conIva(total))}</b>. Nunca más que eso.</p>
-            {!cabe && <p className="an-alerta">Eso pasa tu tope del mes: te quedan {plata(restante)}. Escogé menos por día, menos días o <button className="pn-link" onClick={() => setVista("tope")}>subí tu tope</button>.</p>}
-          </div>
-          <button className="pn-boton is-grande" disabled={!cabe} onClick={() => setVista("revisar")}>Seguir</button>
-        </>
-      )}
-
-      {vista === "revisar" && post && cal && (
-        <>
-          {pasos("Así lo va a ver la gente")}
-          <PostIG imagen={post.miniatura} texto={post.caption} />
-          <dl className="pn-tarjeta an-resumen">
-            <div><dt>Cuándo</dt><dd>{cal.texto}</dd></div>
-            <div><dt>Por día</dt><dd>{plata(porDia)}</dd></div>
-            <div><dt>Máximo a cobrar</dt><dd><b>{plata(conIva(total))}</b> con IVA</dd></div>
-            <div><dt>Quién lo ve</dt><dd>{info.publico}</dd></div>
-            <div><dt>Qué pasa</dt><dd>Sale en Instagram con un botón para escribirte un mensaje.</dd></div>
-          </dl>
-          <button className="pn-boton is-grande" onClick={() => setConfirmar(true)}><Icon n="check" s={24} />Sí, promocionar</button>
-          <button className="pn-link is-centro" onClick={() => setVista("inicio")}>No, todavía no</button>
-        </>
-      )}
-
-      {vista === "listo" && (
-        <>
-          {cab("¡Listo!", `Tu promoción empieza ${cal && cal.inicio === hoyCR() ? "en unos minutos" : cal ? `el ${fechaCorta(cal.inicio)}` : "pronto"}. Aquí vas a ver a cuánta gente le llega y cuántas te escriben.`)}
-          <button className="pn-boton is-grande" onClick={() => { setVista("inicio"); cargar(); }}>Ver mis promociones</button>
-        </>
-      )}
-
-      {confirmar && cal && <Autorizar total={conIva(total)} enviando={enviando} si={lanzar} no={() => setConfirmar(false)} />}
-    </section>
+    </div>,
+    document.body,
   );
 }
 
-/** Rejilla de posts de Instagram para escoger (también la usa el asistente). */
-export function Rejilla({ posts, elegido, elegir }: { posts: Post[] | null; elegido?: string; elegir: (p: Post) => void }) {
-  if (!posts) return <p className="pn-vacio">Trayendo tus posts de Instagram…</p>;
-  if (!posts.length) return <p className="pn-vacio">No encontré posts en Instagram.</p>;
+function Rejilla({ posts, elegido, elegir }: { posts: Post[] | null; elegido?: string; elegir: (p: Post) => void }) {
+  if (!posts) return <div className="pr-cargando"><span className="pn-girando" />Trayendo tus publicaciones…</div>;
+  if (!posts.length) return <p className="pn-vacio">No encontré publicaciones aquí.</p>;
   return (
-    <ul className="an-posts">
+    <ul className="pr-rejilla">
       {posts.map((p) => (
         <li key={p.id}>
-          <button className={elegido === p.id ? "is-on" : ""} onClick={() => elegir(p)} aria-label={primeraLinea(p.caption)}>
+          <button className={elegido === p.id ? "is-on" : ""} onClick={() => elegir(p)} aria-label={primeraLinea(p.caption)} aria-pressed={elegido === p.id}>
             <img src={p.miniatura} alt="" loading="lazy" />
-            {p.tipo === "Video" && <span className="an-tipo" aria-hidden>▶</span>}
+            {p.tipo !== "Foto" && <span className="pr-tipo">{p.tipo}</span>}
+            {elegido === p.id && <span className="pr-check"><Icon n="check" s={22} /></span>}
           </button>
         </li>
       ))}
@@ -263,18 +49,384 @@ export function Rejilla({ posts, elegido, elegir }: { posts: Post[] | null; eleg
   );
 }
 
-/** La última confirmación antes de cobrar: siempre la toca Andrea. */
-export function Autorizar({ total, enviando, si, no }: { total: number; enviando: boolean; si: () => void; no: () => void }) {
-  // Va directo al <body>, para que quede encima de todo aunque se abra desde el chat.
-  return createPortal(
-    <div className="pn-modal" role="dialog" aria-modal="true" aria-labelledby="an-conf">
-      <div>
-        <h2 id="an-conf">Última confirmación</h2>
-        <p>¿Autorizás que se cobren hasta <b>{plata(total)}</b> (con IVA) a la tarjeta de Eucalipto Chic por esta promoción?</p>
-        <button className="pn-boton is-grande" disabled={enviando} onClick={si}>{enviando ? "Creando la promoción…" : "Sí, autorizo"}</button>
-        <button className="pn-link is-centro" disabled={enviando} onClick={no}>No</button>
+type Paso = "tope" | "post" | "cuando" | "dias" | "monto" | "publico" | "revisar";
+const ORDEN: Paso[] = ["post", "cuando", "dias", "monto", "publico", "revisar"];
+
+/** Promocionar un post o una historia, un paso a la vez, con botón de continuar en cada paso. */
+export function Promocionar({ ferias, que: queInicial = "post", avisar, listo, cancelar }: {
+  ferias: Feria[]; que?: "post" | "story"; avisar: Avisar; listo: (texto: string) => void; cancelar: () => void;
+}) {
+  const [info, setInfo] = useState<InfoAnuncios | null>(null);
+  const [que, setQue] = useState<"post" | "story">(queInicial);
+  const [listas, setListas] = useState<{ post: Post[] | null; story: Post[] | null }>({ post: null, story: null });
+  const [post, setPost] = useState<Post | null>(null);
+  const ops = useMemo(() => arranques(ferias), [ferias]);
+  const [desde, setDesde] = useState<Arranque | null>(null);
+  const [dias, setDias] = useState<number | null>(null);
+  const [porDia, setPorDia] = useState<number | null>(RECOMENDADO);
+  const [publico, setPublico] = useState<Publico | null | undefined>(undefined);
+  const [pensando, setPensando] = useState(false);
+  const [paso, setPaso] = useState<Paso>("post");
+  const [autorizar, setAutorizar] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [id] = useState(nidPromo);
+  const caja = useRef<HTMLDivElement>(null);
+  useEffect(() => { caja.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [paso]);
+
+  useEffect(() => { apiAnuncios().then((i) => { setInfo(i); if (i.tope == null) setPaso("tope"); }).catch((e) => avisar(e.message, true)); }, [avisar]);
+  useEffect(() => {
+    if (listas[que]) return;
+    apiAnuncios<{ posts: Post[] }>(undefined, que === "story" ? "?que=historias" : "?que=posts")
+      .then((j) => setListas((l) => ({ ...l, [que]: j.posts }))).catch(() => setListas((l) => ({ ...l, [que]: [] })));
+  }, [que, listas]);
+
+  // Al llegar al paso del público, la IA mira el post y propone a quién mostrarlo.
+  useEffect(() => {
+    if (paso !== "publico" || !post || publico !== undefined) return;
+    setPensando(true);
+    apiAnuncios<{ publico: Publico | null }>({ accion: "segmentar", mediaId: post.id, que })
+      .then((j) => setPublico(j.publico)).catch(() => setPublico(null)).finally(() => setPensando(false));
+  }, [paso, post, publico, que]);
+
+  if (!info) return <div className="pr-cargando"><span className="pn-girando" />Un momento…</div>;
+  if (!info.conectado) return <p className="pn-nota">Instagram todavía no está conectado con el panel.</p>;
+
+  const cal = desde && dias ? calendario(desde, que === "story" ? 1 : dias) : null;
+  const total = cal && porDia ? porDia * cal.dias : 0;
+  const cabe = conIva(total) <= (info.restante ?? 0);
+  const i = ORDEN.indexOf(paso);
+  const puede = paso === "post" ? !!post : paso === "cuando" ? !!desde : paso === "dias" ? !!dias : paso === "monto" ? !!porDia && cabe : paso === "publico" ? !pensando : true;
+  const siguiente = () => {
+    let n = ORDEN[i + 1];
+    if (n === "dias" && que === "story") { setDias(1); n = "monto"; }
+    setPaso(n);
+  };
+  const atras = () => { let n = ORDEN[i - 1]; if (n === "dias" && que === "story") n = "cuando"; if (n) setPaso(n); else cancelar(); };
+
+  async function lanzar() {
+    if (!post || !cal || !porDia) return;
+    setEnviando(true);
+    try {
+      await apiAnuncios({ accion: "promocionar", confirmo: true, id, mediaId: post.id, porDia, dias: cal.dias, inicio: cal.inicio, que, publico: publico ?? null });
+      setAutorizar(false);
+      listo(`¡Listo! La promoción ${cal.inicio === new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10) ? "empieza en unos minutos" : "quedó programada"}. En Anuncios vas a ver a cuánta gente le llega y cuántas te escriben.`);
+    } catch (e) {
+      setAutorizar(false); avisar((e as Error).message, true);
+    } finally { setEnviando(false); }
+  }
+
+  if (paso === "tope") return (
+    <div className="pr">
+      <h3 className="pr-pregunta">Antes de empezar: ¿cuánto es lo máximo que querés gastar en anuncios al mes?</h3>
+      <p className="pn-nota">Nunca me paso de ese monto. Lo podés cambiar cuando querás.</p>
+      <div className="pn-chips is-grandes">{TOPES.map((t) => <button key={t} onClick={async () => { try { setInfo(await apiAnuncios({ accion: "tope", monto: t })); setPaso("post"); } catch (e) { avisar((e as Error).message, true); } }}>{plata(t)} al mes</button>)}</div>
+    </div>
+  );
+
+  return (
+    <div className="pr" ref={caja}>
+      <div className="pr-cab">
+        <button className="pn-icono" onClick={atras} aria-label="Atrás"><Icon n="atras" s={24} /></button>
+        <span>Paso {i + 1} de {ORDEN.length}</span>
+        <button className="pn-icono" onClick={cancelar} aria-label="Cerrar"><Icon n="cerrar" s={22} /></button>
       </div>
-    </div>,
-    document.body,
+      <div className="pr-progreso" aria-hidden><i style={{ width: `${((i + 1) / ORDEN.length) * 100}%` }} /></div>
+
+      {paso === "post" && (
+        <>
+          <h3 className="pr-pregunta">¿Qué querés que vea más gente?</h3>
+          <div className="pn-seg" role="tablist">
+            <button className={que === "post" ? "is-on" : ""} onClick={() => { setQue("post"); setPost(null); }} role="tab" aria-selected={que === "post"}>Posts</button>
+            <button className={que === "story" ? "is-on" : ""} onClick={() => { setQue("story"); setPost(null); }} role="tab" aria-selected={que === "story"}>Historias</button>
+          </div>
+          {que === "story" && <p className="pn-nota">Salen las historias que están en vivo ahora (duran 24 horas).</p>}
+          <Rejilla posts={listas[que]} elegido={post?.id} elegir={(p) => { setPost(p); setPublico(undefined); }} />
+        </>
+      )}
+
+      {paso === "cuando" && (
+        <>
+          <h3 className="pr-pregunta">¿Desde cuándo?</h3>
+          <div className="pn-opciones">{ops.map((o) => (
+            <button key={o.clave} className={desde?.clave === o.clave ? "is-on" : ""} onClick={() => setDesde(o)}>
+              <Icon n={o.feria ? "carpa" : "reloj"} s={22} /><span>{o.etiqueta}{o.feria && <small>Termina el día de la feria</small>}</span>{desde?.clave === o.clave && <Icon n="check" s={22} />}
+            </button>
+          ))}</div>
+        </>
+      )}
+
+      {paso === "dias" && (
+        <>
+          <h3 className="pr-pregunta">¿Por cuántos días?</h3>
+          <p className="pn-nota">Para una feria, con 5 a 7 días antes alcanza.</p>
+          <div className="pn-chips is-grandes">{DIAS.map((n) => <button key={n} className={dias === n ? "is-on" : ""} onClick={() => setDias(n)}>{n} {n === 1 ? "día" : "días"}</button>)}</div>
+          {cal && <p className="pr-dato"><Icon n="reloj" s={20} /><span>{cal.texto}</span></p>}
+        </>
+      )}
+
+      {paso === "monto" && (
+        <>
+          <h3 className="pr-pregunta">¿Cuánto por día?</h3>
+          <p className="pn-nota">Te recomiendo {plata(RECOMENDADO)}: alcanza para llegarle a bastante gente sin gastar mucho.</p>
+          <div className="pn-chips is-grandes">{MONTOS.map((m) => <button key={m} className={porDia === m ? "is-on" : ""} onClick={() => setPorDia(m)}>{plata(m)}{m === RECOMENDADO ? " · recomendado" : ""}</button>)}</div>
+          {cal && porDia && <p className="pr-dato"><Icon n="moneda" s={20} /><span>Máximo a cobrar: <b>{plata(conIva(total))}</b> con IVA, por {cal.dias} {cal.dias === 1 ? "día" : "días"}.</span></p>}
+          {!cabe && <p className="pn-alerta">Eso pasa tu tope del mes: te quedan {plata(info.restante ?? 0)}. Escogé menos días o menos por día.</p>}
+        </>
+      )}
+
+      {paso === "publico" && (
+        <>
+          <h3 className="pr-pregunta">¿A quién se lo mostramos?</h3>
+          {pensando ? (
+            <div className="pr-cargando"><span className="pn-girando" />Estoy viendo tu post para escoger a quién mostrárselo…</div>
+          ) : publico ? (
+            <div className="pr-publico">
+              <p className="pr-ia"><Icon n="chispa" s={22} />{publico.texto}</p>
+              <dl className="pn-filas">
+                <div><dt>Mujeres de</dt><dd>{publico.edad_min} a {publico.edad_max} años</dd></div>
+                <div><dt>Dónde</dt><dd>Costa Rica</dd></div>
+              </dl>
+              {publico.intereses.length > 0 && (
+                <>
+                  <p className="pn-etq">Les interesa (tocá para quitar):</p>
+                  <div className="pn-chips">{publico.intereses.map((x) => (
+                    <button key={x.id} className="is-on" onClick={() => setPublico({ ...publico, intereses: publico.intereses.filter((y) => y.id !== x.id) })}>{x.name} <Icon n="cerrar" s={16} /></button>
+                  ))}</div>
+                </>
+              )}
+              <p className="pn-nota">Meta también busca sola a quienes tienen más chance de escribirte.</p>
+              <button className="pn-txt" onClick={() => setPublico(null)}>Mejor mostrarlo a todo público</button>
+            </div>
+          ) : (
+            <div className="pr-publico"><p className="pr-ia"><Icon n="persona" s={22} />{info.publico}</p></div>
+          )}
+        </>
+      )}
+
+      {paso === "revisar" && post && cal && porDia && (
+        <>
+          <h3 className="pr-pregunta">Así lo va a ver la gente</h3>
+          <PostIG imagen={post.miniatura} texto={que === "story" ? null : post.caption} historia={que === "story"} />
+          <dl className="pn-filas">
+            <div><dt>Cuándo</dt><dd>{cal.texto}</dd></div>
+            <div><dt>Por día</dt><dd>{plata(porDia)}</dd></div>
+            <div><dt>Para quién</dt><dd>{publico ? `Mujeres de ${publico.edad_min} a ${publico.edad_max}` : "Mujeres en Costa Rica"}</dd></div>
+            <div className="is-fuerte"><dt>Máximo a cobrar</dt><dd>{plata(conIva(total))}</dd></div>
+          </dl>
+          <p className="pn-nota">Incluye el 13 % de IVA que cobra el banco. Meta nunca cobra más que eso.</p>
+        </>
+      )}
+
+      <div className="pr-pie">
+        {paso === "revisar"
+          ? <button className="pn-btn is-grande" onClick={() => setAutorizar(true)}><Icon n="megafono" s={24} />Promocionar</button>
+          : paso === "publico" && !pensando && publico
+            ? <button className="pn-btn is-grande" onClick={siguiente}><Icon n="check" s={24} />Usar este público</button>
+            : <button className="pn-btn is-grande" disabled={!puede} onClick={siguiente}>Continuar<Icon n="flecha" s={22} /></button>}
+      </div>
+      {autorizar && cal && (
+        <Confirmacion titulo="¿Autorizás la promoción?" enviando={enviando} si={lanzar} no={() => setAutorizar(false)}
+          texto={<><p>Meta te va a cobrar <b>como máximo {plata(conIva(total))}</b> (con IVA) en tu tarjeta.</p><p>{cal.texto}.</p></>} />
+      )}
+    </div>
+  );
+}
+
+/** Convierte una foto a JPEG recortada al formato de Instagram (4:5 para posts, 9:16 para historias). */
+async function aJpeg(archivo: Blob, que: "post" | "story"): Promise<{ blob: Blob; url: string }> {
+  const src = URL.createObjectURL(archivo);
+  try {
+    const im = new Image();
+    im.crossOrigin = "anonymous";
+    im.src = src;
+    await im.decode();
+    const prop = que === "story" ? 9 / 16 : 4 / 5;
+    let w = im.naturalWidth, h = im.naturalHeight;
+    if (w / h > prop) w = Math.round(h * prop); else h = Math.round(w / prop);
+    const ancho = Math.min(1440, w);
+    const cv = document.createElement("canvas");
+    cv.width = ancho; cv.height = Math.round(ancho / prop);
+    const cx = cv.getContext("2d")!;
+    cx.imageSmoothingQuality = "high";
+    cx.drawImage(im, (im.naturalWidth - w) / 2, (im.naturalHeight - h) / 2, w, h, 0, 0, cv.width, cv.height);
+    const blob = await new Promise<Blob | null>((r) => cv.toBlob(r, "image/jpeg", 0.9));
+    if (!blob) throw new Error();
+    return { blob, url: URL.createObjectURL(blob) };
+  } catch {
+    throw new Error("No pude leer esa foto. Probá con otra.");
+  } finally { URL.revokeObjectURL(src); }
+}
+
+/** Subir un post o una historia nueva a Instagram: foto, texto (con ayuda de la IA), vista previa y confirmación. */
+export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, listo, cancelar }: {
+  piezas: Pieza[]; que?: "post" | "story"; idea?: string; avisar: Avisar; listo: (texto: string) => void; cancelar: () => void;
+}) {
+  const [que, setQue] = useState<"post" | "story">(queInicial);
+  const [foto, setFoto] = useState<{ blob: Blob; url: string; pieza?: Pieza } | null>(null);
+  const [elegirPieza, setElegirPieza] = useState(false);
+  const [caption, setCaption] = useState("");
+  const [escribiendo, setEscribiendo] = useState(false);
+  const [confirmar, setConfirmar] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [id] = useState(nidPromo);
+  const conFoto = piezas.filter((p) => p.foto);
+
+  async function usar(b: Blob, pieza?: Pieza) {
+    try { setFoto({ ...(await aJpeg(b, que)), pieza }); } catch (e) { avisar((e as Error).message, true); }
+  }
+  async function escribir() {
+    setEscribiendo(true);
+    try {
+      const j = await apiAnuncios<{ caption: string }>({ accion: "caption", que, idea: idea || caption, pieza: foto?.pieza ? `${foto.pieza.nombre} (${foto.pieza.tipo}), ${foto.pieza.precio ? plata(foto.pieza.precio) : ""}` : "", imagen: foto?.pieza?.foto?.startsWith("https://") ? foto.pieza.foto : undefined });
+      setCaption(j.caption);
+    } catch (e) { avisar((e as Error).message, true); } finally { setEscribiendo(false); }
+  }
+  async function publicar() {
+    if (!foto) return;
+    setEnviando(true);
+    try {
+      const f = new FormData();
+      f.set("id", id); f.set("que", que); f.set("caption", caption); f.set("confirmo", "si"); f.set("foto", foto.blob, "foto.jpg");
+      const r = await fetch("/api/anuncios/publicar", { method: "POST", body: f });
+      if (r.status === 401) { location.href = "/admin/entrar"; return; }
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "No se pudo publicar.");
+      setConfirmar(false);
+      listo(que === "story" ? "¡Listo! La historia ya está en tu Instagram." : "¡Listo! El post ya está en tu Instagram. Si querés, lo promocionamos para que lo vea más gente.");
+    } catch (e) {
+      setConfirmar(false); avisar((e as Error).message, true);
+    } finally { setEnviando(false); }
+  }
+
+  return (
+    <div className="pr">
+      <div className="pn-seg" role="tablist">
+        <button className={que === "post" ? "is-on" : ""} onClick={() => { setQue("post"); setFoto(null); }}>Post</button>
+        <button className={que === "story" ? "is-on" : ""} onClick={() => { setQue("story"); setFoto(null); }}>Historia</button>
+      </div>
+      {!foto ? (
+        elegirPieza ? (
+          <>
+            <h3 className="pr-pregunta">Escogé la foto de una pieza</h3>
+            <ul className="pr-rejilla">{conFoto.map((p) => (
+              <li key={p.slug}><button onClick={async () => { try { const b = await (await fetch((p.lista?.[0]?.url ?? p.foto).replace(/-800\.(\w+)$/, "-1600.$1"))).blob(); usar(b, p); } catch { avisar("No pude abrir esa foto.", true); } }}>
+                <img src={p.foto} alt={p.nombre} loading="lazy" /><span className="pr-tipo">{p.nombre}</span>
+              </button></li>
+            ))}</ul>
+            <button className="pn-txt" onClick={() => setElegirPieza(false)}>Volver</button>
+          </>
+        ) : (
+          <>
+            <h3 className="pr-pregunta">¿Qué foto subimos?</h3>
+            <div className="pn-botones is-columna">
+              <label className="pn-btn is-grande"><Icon n="foto" s={24} />Tomar o escoger una foto
+                <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) usar(f); }} />
+              </label>
+              <button className="pn-btn is-tinte is-grande" onClick={() => setElegirPieza(true)}><Icon n="percha" s={24} />Usar la foto de una pieza</button>
+            </div>
+          </>
+        )
+      ) : (
+        <>
+          <PostIG imagen={foto.url} texto={que === "story" ? null : caption} historia={que === "story"} publicacion />
+          {que === "post" && (
+            <label className="pn-campo">
+              <span>Texto del post</span>
+              <textarea rows={5} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Escribí el texto o pedíselo a la IA" />
+            </label>
+          )}
+          <div className="pn-botones is-columna">
+            {que === "post" && <button className="pn-btn is-tinte" disabled={escribiendo} onClick={escribir}><Icon n="chispa" s={22} />{escribiendo ? "Escribiendo…" : caption ? "Escribir otro con IA" : "Escribir el texto con IA"}</button>}
+            <button className="pn-btn is-grande" disabled={que === "post" && !caption.trim()} onClick={() => setConfirmar(true)}><Icon n="insta" s={24} />Publicar en Instagram</button>
+            <button className="pn-btn is-gris" onClick={() => setFoto(null)}>Cambiar la foto</button>
+          </div>
+        </>
+      )}
+      <button className="pn-txt pr-cancelar" onClick={cancelar}>Cancelar</button>
+      {confirmar && (
+        <Confirmacion titulo={que === "story" ? "¿Publicar la historia?" : "¿Publicar el post?"} boton="Sí, publicar" enviando={enviando} si={publicar} no={() => setConfirmar(false)}
+          texto={<p>Se va a publicar ya mismo en el Instagram de Eucalipto Chic y lo van a ver tus seguidoras.</p>} />
+      )}
+    </div>
+  );
+}
+
+const ESTADOS: Record<Promo["estado"], string> = { creando: "Preparándose", activa: "Corriendo", detenida: "Detenida", terminada: "Terminó", error: "No se hizo" };
+
+/** Pestaña Anuncios: tope del mes, promocionar, publicar y resultados. */
+export default function Anuncios({ ferias, piezas, arrancar, alArrancar, avisar }: { ferias: Feria[]; piezas: Pieza[]; arrancar: boolean; alArrancar: () => void; avisar: Avisar }) {
+  const [info, setInfo] = useState<InfoAnuncios | null>(null);
+  const [vista, setVista] = useState<"" | "promo" | "publicar">("");
+  const [tope, setTope] = useState(false);
+  const [detener, setDetener] = useState<string | null>(null);
+  const cargar = () => apiAnuncios().then(setInfo).catch((e) => avisar(e.message, true));
+  useEffect(() => { cargar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (arrancar) { setVista("promo"); alArrancar(); } }, [arrancar, alArrancar]);
+
+  const terminar = (t: string) => { setVista(""); avisar(t); cargar(); };
+
+  return (
+    <section className="pn-seccion">
+      <header className="pn-titulo">
+        <h1>Anuncios</h1>
+        <p>Que más gente vea tus posts e historias, y publicá en Instagram desde aquí. Nada se cobra sin tu autorización.</p>
+      </header>
+
+      {vista === "promo" && <div className="pn-tarjeta"><Promocionar ferias={ferias} avisar={avisar} listo={terminar} cancelar={() => setVista("")} /></div>}
+      {vista === "publicar" && <div className="pn-tarjeta"><Publicar piezas={piezas} avisar={avisar} listo={terminar} cancelar={() => setVista("")} /></div>}
+
+      {!vista && (
+        <>
+          <div className="pn-acciones">
+            <button className="pn-accion" onClick={() => setVista("promo")}><span className="pn-accion-ico"><Icon n="megafono" s={26} /></span><span><b>Promocionar</b><small>Un post o una historia</small></span><Icon n="flecha" s={20} /></button>
+            <button className="pn-accion" onClick={() => setVista("publicar")}><span className="pn-accion-ico is-insta"><Icon n="insta" s={26} /></span><span><b>Publicar en Instagram</b><small>Post o historia con texto hecho por IA</small></span><Icon n="flecha" s={20} /></button>
+          </div>
+
+          {info?.conectado && (
+            <div className="pn-tarjeta an-tope">
+              {info.tope == null || tope ? (
+                <>
+                  <p className="pn-etq">¿Cuánto es lo máximo que querés gastar en anuncios al mes?</p>
+                  <div className="pn-chips is-grandes">{TOPES.map((t) => <button key={t} className={info.tope === t ? "is-on" : ""} onClick={async () => { try { setInfo(await apiAnuncios({ accion: "tope", monto: t })); setTope(false); avisar("Tope guardado."); } catch (e) { avisar((e as Error).message, true); } }}>{plata(t)}</button>)}</div>
+                </>
+              ) : (
+                <>
+                  <div className="an-tope-fila"><span>Tope del mes</span><b>{plata(info.tope)}</b><button className="pn-txt" onClick={() => setTope(true)}>Cambiar</button></div>
+                  <div className="an-barra" aria-hidden><i style={{ width: `${Math.min(100, ((info.usado ?? 0) / Math.max(1, info.tope)) * 100)}%` }} /></div>
+                  <p className="pn-nota">Usado o comprometido: {plata(info.usado ?? 0)}. Te quedan {plata(info.restante ?? 0)}.</p>
+                </>
+              )}
+            </div>
+          )}
+
+          <h2 className="pn-sub">Tus promociones</h2>
+          {!info ? <div className="pr-cargando"><span className="pn-girando" />Cargando…</div>
+            : !info.conectado ? <p className="pn-vacio">Instagram todavía no está conectado.</p>
+            : !info.promos?.length ? <p className="pn-vacio">Todavía no has promocionado nada.</p>
+            : (
+              <ul className="an-lista">
+                {info.promos.map((p) => (
+                  <li key={p.id} className="pn-tarjeta">
+                    <PostIG compacto imagen={p.miniatura} texto={null} pie={
+                      <>
+                        <p className={"an-estado is-" + p.estado}>{ESTADOS[p.estado]}</p>
+                        <p className="an-cap">{primeraLinea(p.caption)}</p>
+                        <dl className="pn-numeros">
+                          <div><dt>Le llegó a</dt><dd>{p.alcance.toLocaleString("es-CR")}</dd></div>
+                          <div><dt>Te escribieron</dt><dd>{p.mensajes}</dd></div>
+                          <div><dt>Gastado</dt><dd>{plata(conIva(p.gastado))}</dd></div>
+                        </dl>
+                        {p.estado === "activa" && (detener === p.id ? (
+                          <div className="pn-botones"><button className="pn-btn is-peligro is-chico" onClick={async () => { try { setInfo(await apiAnuncios({ accion: "detener", id: p.id })); avisar("Promoción detenida."); } catch (e) { avisar((e as Error).message, true); } setDetener(null); }}>Sí, detener</button><button className="pn-btn is-gris is-chico" onClick={() => setDetener(null)}>No</button></div>
+                        ) : <button className="pn-txt is-peligro" onClick={() => setDetener(p.id)}>Detener promoción</button>)}
+                      </>
+                    } />
+                  </li>
+                ))}
+              </ul>
+            )}
+        </>
+      )}
+    </section>
   );
 }

@@ -25,7 +25,7 @@ export const entre = (a: string, b: string) => Math.round((Date.parse(b + "T12:0
 export const fechaCorta = (f: string) =>
   new Date(f.length === 10 ? f + "T12:00:00Z" : f).toLocaleDateString("es-CR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Costa_Rica" });
 export const primeraLinea = (t: string | null) => (t ?? "").split("\n")[0].trim() || "Post de Instagram";
-export const plata = (n: number) => "₡" + Math.round(n).toLocaleString("es-CR").replace(/[.,\s]/g, " ");
+export const plata = (n: number) => "₡" + Math.round(n).toLocaleString("es-CR").replace(/[.,\s]/g, "\u00a0");
 
 /** Desde cuándo: hoy, mañana o terminando el día de una feria que viene. */
 export type Arranque = { clave: string; etiqueta: string; feria?: Feria };

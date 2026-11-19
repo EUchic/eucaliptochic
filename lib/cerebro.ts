@@ -10,20 +10,26 @@ import {
 
 export type Seccion = "inicio" | "plata" | "tienda" | "ferias" | "anuncios";
 export type Movimiento = Extract<Accion, { tipo: "movimiento" }>;
+export type BorradorPieza = { nombre?: string; tipoPieza?: string; precio?: number; coleccion?: string; descripcion?: string; tallas?: { talla: string; existencias: number | null }[] };
+export type BorradorFeria = { nombre?: string; fecha?: string; lugar?: string };
 export type Tarjeta =
   | { tipo: "confirmar"; acciones: Accion[]; aprendo?: string }
   | { tipo: "categoria"; mov: Movimiento; clave?: string }
-  | { tipo: "posts" }
+  | { tipo: "posts"; que?: "post" | "story" }
+  | { tipo: "publicar"; caption?: string; que?: "post" | "story" }
   | { tipo: "foto"; slug?: string }
+  | { tipo: "producto"; borrador: BorradorPieza }
+  | { tipo: "feria"; borrador: BorradorFeria }
   | { tipo: "ir"; seccion: Seccion; boton: string }
   | { tipo: "resumen" }
+  | { tipo: "reporte" }
   | { tipo: "opciones"; ops: string[] };
 export type Pendiente = { tipo: "monto"; sentido: Sentido } | null;
 export type Pensado = { respuesta: string; acciones: Accion[]; tarjeta?: Tarjeta; pendiente?: Pendiente; motor?: string };
 
 const uid = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));
 
-export const SUGERENCIAS = ["Anotar una venta", "Anotar un gasto", "Promocionar un post", "Mejorar una foto", "¿Cómo voy este mes?", "Agregar una feria"];
+export const SUGERENCIAS = ["Anotar una venta", "Anotar un gasto", "Meter un producto nuevo", "Promocionar un post", "Agregar una feria", "¿Cómo voy este mes?"];
 
 const NOMBRE_SECCION: Record<Seccion, string> = { inicio: "Inicio", plata: "Plata", tienda: "Tienda", ferias: "Ferias", anuncios: "Anuncios" };
 
@@ -69,6 +75,22 @@ export function pensarLocal(texto: string, piezas: Pieza[], d: Datos, tc: TipoCa
   }
   if (/(que (podes|puedes|sabes) hacer|ayuda|como funciona|como te uso|que hago aqui)/.test(n)) {
     return { respuesta: AYUDA, acciones: [], tarjeta: { tipo: "opciones", ops: SUGERENCIAS } };
+  }
+
+  // Producto nuevo: abre la ficha (foto, tallas, cuántas hay, precio…)
+  if (/(meter|agregar|subir|crear|anotar|registrar|poner|nuev)\w* (un |una |el |la )?(producto|pieza|prenda|blusa|vestido|falda|pantalon|enterizo|top|sueter)/.test(n) || /(producto|pieza|prenda) nuev/.test(n)) {
+    const nombre = texto.match(/(?:llama|se llama|nombre)\s+(.+)$/i)?.[1]?.trim();
+    const m = dinero;
+    return { respuesta: "¡Qué bueno! Llenemos la ficha juntas. Empezá por la foto y yo te voy preguntando lo demás.", acciones: [],
+      tarjeta: { tipo: "producto", borrador: { nombre, precio: m?.moneda === "CRC" ? m.monto : undefined } } };
+  }
+  // Feria nueva: ficha con buscador de lugares
+  if (/(agregar|anotar|meter|crear|poner|registrar|nueva)\w* (una |la )?feria/.test(n) || /feria nueva/.test(n)) {
+    return { respuesta: "Dale. Contame el nombre, la fecha y dónde es; el lugar lo buscamos en el mapa.", acciones: [], tarjeta: { tipo: "feria", borrador: {} } };
+  }
+  // Publicar en Instagram
+  if (/(publicar|subir|postear|montar)\w* (un |una |el |la )?(post|story|historia|foto) (en|a|al) (instagram|ig)/.test(n) || /(publicar|postear) en (instagram|ig)/.test(n)) {
+    return { respuesta: "Hagámoslo. Escogé la foto, te ayudo con el texto y lo revisás antes de publicar.", acciones: [], tarjeta: { tipo: "publicar", que: /story|historia/.test(n) ? "story" : "post" } };
   }
 
   // Promocionar un post

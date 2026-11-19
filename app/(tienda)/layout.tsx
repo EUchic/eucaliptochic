@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/bodoni-moda";
 import "@fontsource-variable/bodoni-moda/wght-italic.css";
 import "@fontsource-variable/jost";
-import "./globals.css";
+import "../globals.css";
 import { CartProvider } from "@/components/Cart";
 import Footer from "@/components/Footer";
 import Fx from "@/components/Fx";

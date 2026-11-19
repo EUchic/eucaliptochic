@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ajustes, ErrorBase, guardarAccion, promos, type Promo } from "@/lib/db";
-import { alcanceEstimado, crearEnPausa, diagnostico, detener, encender, ErrorMeta, hayMeta, postsRecientes, PUBLICO_TEXTO, resultados } from "@/lib/meta";
+import { alcanceEstimado, buscarIntereses, crearEnPausa, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
+import { hayIA, jsonIA } from "@/lib/ia";
 import { no, permitido } from "@/lib/panel";
 import { idSeguro } from "@/lib/validar";
 
@@ -67,7 +68,9 @@ export async function GET(req: Request) {
   if (bloqueo) return bloqueo;
   if (!hayMeta()) return NextResponse.json({ conectado: false });
   try {
-    if (new URL(req.url).searchParams.get("que") === "posts") return NextResponse.json({ posts: await postsRecientes() });
+    const que = new URL(req.url).searchParams.get("que");
+    if (que === "posts") return NextResponse.json({ posts: await postsRecientes() });
+    if (que === "historias") return NextResponse.json({ posts: await historias() });
     return NextResponse.json(await estado());
   } catch (e) {
     return no(e instanceof ErrorMeta || e instanceof ErrorBase ? e.message : "No pude hablar con Meta.", 502);
@@ -92,6 +95,40 @@ export async function POST(req: Request) {
     if (b.accion === "diagnostico") {
       // Nunca enciende nada: solo pregunta a Meta y arma/borra una prueba en pausa.
       return NextResponse.json(await diagnostico());
+    }
+
+    if (b.accion === "permisos") return NextResponse.json({ permisos: await permisos() });
+
+    if (b.accion === "segmentar") {
+      // La IA mira la foto y el texto del post y propone a quién mostrárselo; los intereses son reales de Meta.
+      if (!hayIA()) return NextResponse.json({ publico: null });
+      const lista = b.que === "story" ? await historias() : await postsRecientes();
+      const post = lista.find((x) => x.id === String(b.mediaId ?? ""));
+      if (!post) return no("No encontré ese post.", 404);
+      const ia = await jsonIA<{ texto: string; edad_min: number; edad_max: number; intereses: string[] }>({
+        instrucciones: "Sos experta en anuncios de Instagram para marcas pequeñas de ropa de mujer en Costa Rica. Proponé a quién mostrarle este anuncio para que le escriban por mensaje y compren. Sé concreta y realista: el presupuesto es bajo.",
+        pedido: `Marca: Eucalipto Chic, ropa de diseño costarricense para mujer, cómoda y elegante, de precio medio. Texto del post: «${post.caption.slice(0, 600) || "(sin texto)"}». Devolvé: texto (una frase sencilla en español de Costa Rica para Andrea, que no es técnica, explicando a quién se le va a mostrar y por qué), edad_min y edad_max (entre 18 y 65), e intereses (3 a 6 palabras de intereses de Meta en español, como 'Moda', 'Ropa de mujer', 'Compras', 'Diseño de modas', 'Boutique').`,
+        esquema: { type: "object", additionalProperties: false, required: ["texto", "edad_min", "edad_max", "intereses"], properties: {
+          texto: { type: "string" }, edad_min: { type: "integer" }, edad_max: { type: "integer" }, intereses: { type: "array", items: { type: "string" } },
+        } },
+        imagen: post.miniatura,
+      });
+      const encontrados = (await Promise.all(ia.intereses.slice(0, 6).map((t) => buscarIntereses(t).then((r) => r[0]).catch(() => undefined))))
+        .filter((x): x is NonNullable<typeof x> => !!x);
+      const intereses = [...new Map(encontrados.map((i) => [i.id, { id: i.id, name: i.name }])).values()];
+      const publico: Publico = { texto: ia.texto, edad_min: Math.max(18, Math.min(65, ia.edad_min)), edad_max: Math.max(18, Math.min(65, ia.edad_max)), intereses };
+      return NextResponse.json({ publico });
+    }
+
+    if (b.accion === "caption") {
+      if (!hayIA()) return no("El texto con IA se activa con OpenAI.", 501);
+      const ia = await jsonIA<{ caption: string }>({
+        instrucciones: "Escribís los textos de Instagram de Eucalipto Chic, marca de ropa de mujer de Costa Rica (diseño nacional, cómoda y elegante). Voz cálida, cercana y elegante, español de Costa Rica con voseo, sin exagerar. Máximo 3 frases cortas, 1 o 2 emojis discretos como mucho, termina invitando a escribir por mensaje directo, y 3 a 5 hashtags relevantes al final.",
+        pedido: `Escribí el texto para un ${b.que === "story" ? "story" : "post"}. Idea de Andrea: «${String(b.idea ?? "").slice(0, 400) || "presentar la prenda"}». ${b.pieza ? `Prenda: ${String(b.pieza).slice(0, 200)}.` : ""}`,
+        esquema: { type: "object", additionalProperties: false, required: ["caption"], properties: { caption: { type: "string" } } },
+        imagen: typeof b.imagen === "string" && /^https:\/\//.test(b.imagen) ? b.imagen : undefined,
+      });
+      return NextResponse.json({ caption: ia.caption.slice(0, 2000) });
     }
 
     if (b.accion === "estimar") {
@@ -130,8 +167,10 @@ export async function POST(req: Request) {
         return no(`Con esta promoción te pasarías de tu tope del mes (₡${tope.toLocaleString("es-CR")}). Te quedan ₡${Math.max(0, tope - usado).toLocaleString("es-CR")}. Probá con menos días o menos por día, o subí el tope.`, 409);
       }
 
-      const post = (await postsRecientes()).find((x) => x.id === String(b.mediaId ?? ""));
-      if (!post) return no("No encontré ese post en el Instagram de la marca.", 400);
+      const que = b.que === "story" ? "story" : "post";
+      const post = (que === "story" ? await historias() : await postsRecientes()).find((x) => x.id === String(b.mediaId ?? ""));
+      if (!post) return no(que === "story" ? "Esa historia ya no está en vivo (duran 24 horas). Escogé otra." : "No encontré ese post en el Instagram de la marca.", 400);
+      const publico = leerPublico(b.publico);
 
       const empieza = inicio === hoy ? new Date(Date.now() + 5 * 60e3) : new Date(`${inicio}T06:00:00-06:00`);
       const termina = new Date(`${sumarDias(inicio, dias - 1)}T23:59:00-06:00`);
@@ -143,7 +182,7 @@ export async function POST(req: Request) {
 
       const nombre = `Panel · ${post.caption.split("\n")[0].slice(0, 40) || "Post"} · ${inicio}`;
       try {
-        const ids = await crearEnPausa({ nombre, mediaId: post.id, inicio: empieza, fin: termina, total });
+        const ids = await crearEnPausa({ nombre, mediaId: post.id, inicio: empieza, fin: termina, total, publico, que });
         await promos.cambiar(id, { ...ids });
         try {
           await encender(ids);
@@ -165,4 +204,17 @@ export async function POST(req: Request) {
   } catch (e) {
     return no(e instanceof ErrorMeta || e instanceof ErrorBase ? e.message : "No pude hablar con Meta.", 502);
   }
+}
+
+/** Solo pasa un público con edades razonables e intereses con id numérico de Meta. */
+function leerPublico(v: unknown): Publico | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const min = Number(o.edad_min), max = Number(o.edad_max);
+  if (!(min >= 18 && min <= 65 && max >= min && max <= 65)) return null;
+  const intereses = (Array.isArray(o.intereses) ? o.intereses : []).slice(0, 10).flatMap((i) => {
+    const x = (i ?? {}) as Record<string, unknown>;
+    return /^\d{5,20}$/.test(String(x.id)) && typeof x.name === "string" ? [{ id: String(x.id), name: x.name.slice(0, 80) }] : [];
+  });
+  return { texto: String(o.texto ?? "").slice(0, 300), edad_min: Math.round(min), edad_max: Math.round(max), intereses };
 }

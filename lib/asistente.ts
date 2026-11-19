@@ -11,13 +11,21 @@ export const CATS: Record<Sentido, string[]> = {
 export const METODOS = ["SINPE", "Efectivo", "Datáfono", "Transferencia", "ONVO", "Tarjeta"];
 
 export type Accion =
-  | { id: string; tipo: "movimiento"; sentido: Sentido; monto: number; moneda: "CRC" | "USD"; categoria: string; metodo: string; concepto: string; feria?: string; fecha: string }
+  | { id: string; tipo: "movimiento"; sentido: Sentido; monto: number; moneda: "CRC" | "USD"; categoria: string; metodo: string; concepto: string; feria?: string; fecha: string; persona?: string }
   | { id: string; tipo: "precio"; slug: string; nombre: string; precio: number }
   | { id: string; tipo: "visible"; slug: string; nombre: string; visible: boolean }
   | { id: string; tipo: "coleccion"; nombre: string }
   | { id: string; tipo: "mover"; slug: string; nombre: string; coleccion: string }
-  | { id: string; tipo: "pieza"; nombre: string; tipoPieza: string; precio: number; coleccion?: string }
-  | { id: string; tipo: "feria"; nombre: string; fecha: string; lugar?: string }
+  | { id: string; tipo: "pieza"; nombre: string; tipoPieza: string; precio: number; coleccion?: string; slug?: string; descripcion?: string; tallas?: Talla[] }
+  | { id: string; tipo: "tallas"; slug: string; nombre: string; tallas: Talla[] }
+  | { id: string; tipo: "descripcion"; slug: string; nombre: string; descripcion: string }
+  | { id: string; tipo: "feria"; nombre: string; fecha: string; lugar?: string; direccion?: string; lat?: number; lng?: number }
+  | { id: string; tipo: "persona"; nombre: string; rol?: "clienta" | "proveedor" | "otro"; categoria?: string; notas?: string }
+  | { id: string; tipo: "recordar"; texto: string }
+  | { id: string; tipo: "olvidar"; memoria: string; texto: string }
+  | { id: string; tipo: "ajuste"; clave: string; valor: unknown }
+  | { id: string; tipo: "foto_aprobar"; foto_id: string; slug: string; nombre: string }
+  | { id: string; tipo: "foto_descartar"; foto_id: string; slug: string; nombre: string }
   | { id: string; tipo: "foto"; foto: string; slug: string; nombre: string }
   | { id: string; tipo: "anular"; mov: string; nombre: string }
   | { id: string; tipo: "quitar_foto"; foto_id: string; slug: string; nombre: string }
@@ -26,7 +34,12 @@ export type Accion =
   | { id: string; tipo: "borrar_feria"; feria: string; nombre: string }
   | { id: string; tipo: "aprender"; clave?: string; sentido: Sentido; categoria: string; nueva?: boolean };
 
-export type Pieza = { slug: string; nombre: string; precio: number; tipo: string; coleccion: string; foto: string; fotos: number; oculta?: boolean; lista?: { id: string; url: string }[] };
+export type Talla = { talla: string; existencias: number | null };
+export type Pieza = {
+  slug: string; nombre: string; precio: number; tipo: string; coleccion: string; foto: string; fotos: number; oculta?: boolean;
+  lista?: { id: string; url: string }[]; descripcion?: string | null; tallas?: Talla[]; propuesta?: { id: string; url: string; grande?: string } | null;
+};
+export type Persona = { nombre: string; rol?: string | null; categoria?: string | null; notas?: string | null; veces: number; ultimo?: string | null };
 export type Mov = Extract<Accion, { tipo: "movimiento" }> & { crc: number; anulado?: boolean; creado: string };
 export type Feria = { id: string; nombre: string; fecha: string; lugar?: string; direccion?: string; lat?: number; lng?: number; foto?: string };
 export type Datos = {
@@ -39,14 +52,17 @@ export type Datos = {
   hechas: string[]; // ids de acciones ya aplicadas (idempotencia)
   categorias: { nombre: string; sentido: Sentido }[]; // categorías que Andrea le enseñó al asistente
   aprendido: { clave: string; sentido: Sentido; categoria: string }[]; // palabras que ya sabe a qué categoría van
+  personas: Persona[]; // gente con la que Andrea hace negocio (el asistente la recuerda)
+  memoria: { id: string; texto: string }[]; // cosas que Andrea le pidió al asistente que recuerde
+  ajustes: Record<string, unknown>;
 };
-export const VACIO: Datos = { cambios: {}, nuevas: [], colecciones: [], movs: [], ferias: [], fotos: {}, hechas: [], categorias: [], aprendido: [] };
+export const VACIO: Datos = { cambios: {}, nuevas: [], colecciones: [], movs: [], ferias: [], fotos: {}, hechas: [], categorias: [], aprendido: [], personas: [], memoria: [], ajustes: {} };
 
 /** Categorías de un sentido: las de siempre más las que Andrea agregó. */
 export const categoriasDe = (d: Pick<Datos, "categorias">, s: Sentido) => [...CATS[s].filter((c) => c !== "Otro"), ...d.categorias.filter((c) => c.sentido === s).map((c) => c.nombre).filter((c) => !CATS[s].includes(c)), ...(CATS[s].includes("Otro") ? ["Otro"] : [])];
 export type TipoCambio = { compra: number; venta: number; fecha: string } | null;
 
-export const fmt = (n: number) => (n < 0 ? "−₡" : "₡") + Math.abs(Math.round(n)).toLocaleString("es-CR").replace(/[.,\s]/g, " ");
+export const fmt = (n: number) => (n < 0 ? "−₡" : "₡") + Math.abs(Math.round(n)).toLocaleString("es-CR").replace(/[.,\s]/g, "\u00a0");
 export const hoy = () => new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10); // hora de Costa Rica
 export const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!]/g, "").trim();
 const uid = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));
@@ -55,13 +71,21 @@ const uid = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(3
 export function describir(a: Accion): string {
   switch (a.tipo) {
     case "movimiento":
-      return `${a.sentido === "ingreso" ? "Entró" : "Salió"} ${a.moneda === "USD" ? "$" + a.monto : fmt(a.monto)} · ${a.categoria} · ${a.metodo}${a.feria ? " · " + a.feria : ""}`;
+      return `${a.sentido === "ingreso" ? "Entró" : "Salió"} ${a.moneda === "USD" ? "$" + a.monto : fmt(a.monto)} · ${a.categoria} · ${a.metodo}${a.persona ? " · " + (a.sentido === "ingreso" ? "de " : "a ") + a.persona : ""}${a.feria ? " · " + a.feria : ""}`;
     case "precio": return `${a.nombre} pasa a costar ${fmt(a.precio)}`;
     case "visible": return a.visible ? `${a.nombre} vuelve a salir en la tienda` : `${a.nombre} se esconde de la tienda`;
     case "coleccion": return `Colección nueva: ${a.nombre}`;
     case "mover": return `${a.nombre} pasa a la colección ${a.coleccion}`;
-    case "pieza": return `Pieza nueva: ${a.nombre} (${a.tipoPieza}) a ${fmt(a.precio)}${a.coleccion ? ", colección " + a.coleccion : ""}`;
-    case "feria": return `Feria nueva: ${a.nombre}, ${fechaLinda(a.fecha)}`;
+    case "pieza": return `Pieza nueva: ${a.nombre} (${a.tipoPieza}) a ${fmt(a.precio)}${a.coleccion ? ", colección " + a.coleccion : ""}${a.tallas?.length ? ", tallas " + a.tallas.map((t) => t.talla + (t.existencias != null ? ` (${t.existencias})` : "")).join(", ") : ""}`;
+    case "tallas": return `${a.nombre}: ${a.tallas.map((t) => t.talla + (t.existencias != null ? ` (${t.existencias})` : "")).join(", ")}`;
+    case "descripcion": return `Descripción nueva para ${a.nombre}`;
+    case "persona": return `Recordar a ${a.nombre}${a.notas ? ": " + a.notas : ""}`;
+    case "recordar": return `Recordar: ${a.texto}`;
+    case "olvidar": return `Olvidar: ${a.texto}`;
+    case "ajuste": return "Ajuste del panel";
+    case "foto_aprobar": return `La foto nueva queda de portada en ${a.nombre}`;
+    case "foto_descartar": return `Se descarta la foto propuesta de ${a.nombre}`;
+    case "feria": return `Feria nueva: ${a.nombre}, ${fechaLinda(a.fecha)}${a.lugar ? ", en " + a.lugar : ""}`;
     case "foto": return `La foto queda en ${a.nombre}`;
     case "anular": return `Se anula: ${a.nombre}`;
     case "quitar_foto": return `Se quita una foto de ${a.nombre}`;
@@ -316,10 +340,10 @@ export function aplicar(d: Datos, a: Accion, tc: TipoCambio): Datos {
     };
     case "coleccion": return { ...x, colecciones: x.colecciones.includes(a.nombre) ? x.colecciones : [...x.colecciones, a.nombre] };
     case "pieza": {
-      const slug = "nueva-" + norm(a.nombre).replace(/[^a-z0-9]+/g, "-") + "-" + a.id.slice(0, 4);
-      return { ...x, nuevas: [{ slug, nombre: a.nombre, precio: a.precio, tipo: a.tipoPieza, coleccion: a.coleccion ?? "", foto: "", fotos: 0 }, ...x.nuevas] };
+      const slug = a.slug || "nueva-" + norm(a.nombre).replace(/[^a-z0-9]+/g, "-") + "-" + a.id.slice(0, 4);
+      return { ...x, nuevas: [{ slug, nombre: a.nombre, precio: a.precio, tipo: a.tipoPieza, coleccion: a.coleccion ?? "", foto: "", fotos: 0, tallas: a.tallas, descripcion: a.descripcion }, ...x.nuevas] };
     }
-    case "feria": return { ...x, ferias: [{ id: a.id, nombre: a.nombre, fecha: a.fecha, lugar: a.lugar }, ...x.ferias] };
+    case "feria": return { ...x, ferias: [{ id: a.id, nombre: a.nombre, fecha: a.fecha, lugar: a.lugar, direccion: a.direccion, lat: a.lat, lng: a.lng }, ...x.ferias] };
     case "foto": return { ...x, fotos: { ...x.fotos, [a.foto]: a.slug } };
     case "anular": return { ...x, movs: x.movs.map((m) => (m.id === a.mov ? { ...m, anulado: true } : m)) };
     case "quitar_foto": return x; // solo existe con la base conectada
@@ -331,5 +355,12 @@ export function aplicar(d: Datos, a: Accion, tc: TipoCambio): Datos {
       categorias: a.nueva && !x.categorias.some((c) => c.nombre === a.categoria) ? [...x.categorias, { nombre: a.categoria, sentido: a.sentido }] : x.categorias,
       aprendido: a.clave ? [...x.aprendido.filter((l) => l.clave !== a.clave), { clave: a.clave, sentido: a.sentido, categoria: a.categoria }] : x.aprendido,
     };
+    case "recordar": return { ...x, memoria: [...x.memoria, { id: a.id, texto: a.texto }] };
+    case "olvidar": return { ...x, memoria: x.memoria.filter((m) => m.id !== a.memoria) };
+    case "ajuste": return { ...x, ajustes: { ...x.ajustes, [a.clave]: a.valor } };
+    case "persona": return { ...x, personas: [...x.personas.filter((p) => norm(p.nombre) !== norm(a.nombre)), { nombre: a.nombre, rol: a.rol, categoria: a.categoria, notas: a.notas, veces: 0 }] };
+    case "tallas": return { ...x, cambios: { ...x.cambios, [a.slug]: { ...x.cambios[a.slug], tallas: a.tallas } } };
+    case "descripcion": return { ...x, cambios: { ...x.cambios, [a.slug]: { ...x.cambios[a.slug], descripcion: a.descripcion } } };
+    default: return x; // fotos de la IA: solo existen con la base conectada
   }
 }

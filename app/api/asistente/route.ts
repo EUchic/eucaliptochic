@@ -1,59 +1,88 @@
 import { NextResponse } from "next/server";
-import { CATS, METODOS, hoy, type Accion, type Pieza } from "@/lib/asistente";
+import { CATS, METODOS, hoy, type Accion, type Talla } from "@/lib/asistente";
 import type { Movimiento, Seccion, Tarjeta } from "@/lib/cerebro";
+import { responses, textoDe } from "@/lib/ia";
+import { permitido } from "@/lib/panel";
+import { TIPOS_PIEZA } from "@/lib/validar";
 
-// El asistente con IA (OpenAI, Responses API). Entiende lo que Andrea dice y propone acciones o abre pasos en el chat;
-// nunca guarda nada por su cuenta. Sin OPENAI_API_KEY responde 501 y el panel usa el cerebro local (lib/cerebro.ts).
+// El asistente con IA (OpenAI, Responses API). Entiende lo que Andrea dice, pregunta cuando le falta algo
+// y propone acciones o abre pasos en el chat; nunca guarda nada por su cuenta (todo pasa por un "Sí" de ella).
+// Sin OPENAI_API_KEY responde 501 y el panel usa el cerebro local (lib/cerebro.ts).
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
+type PiezaCtx = { slug: string; nombre: string; precio: number; tipo: string; coleccion: string; oculta?: boolean; tallas?: Talla[]; sinFoto?: boolean };
 type Contexto = {
-  piezas: Pieza[]; colecciones: string[]; ferias: { id: string; nombre: string; fecha: string; lugar?: string }[]; resumen: string;
+  piezas: PiezaCtx[]; colecciones: string[]; ferias: { id: string; nombre: string; fecha: string; lugar?: string }[]; resumen: string;
+  movs?: { id: string; fecha: string; sentido: string; crc: number; categoria: string; metodo: string; persona?: string; concepto: string; feria?: string }[];
+  personas?: { nombre: string; rol?: string | null; categoria?: string | null; notas?: string | null; veces: number }[];
+  memoria?: { id: string; texto: string }[];
   categorias?: { nombre: string; sentido: "ingreso" | "gasto" }[]; aprendido?: { clave: string; sentido: string; categoria: string }[];
-  tipoCambio?: { compra: number; venta: number } | null;
+  tipoCambio?: { compra: number; venta: number } | null; pendientes?: string[]; seccion?: string;
 };
 type Turno = { de: "ella" | "asis"; texto: string };
 
 const SECCIONES: Seccion[] = ["inicio", "plata", "tienda", "ferias", "anuncios"];
+const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
 function herramientas(cats: string[]) {
   const fn = (name: string, description: string, properties: Record<string, unknown> = {}, required: string[] = []) =>
     ({ type: "function", name, description, parameters: { type: "object", properties, required, additionalProperties: false }, strict: false });
+  const talla = { type: "object", properties: { talla: { type: "string" }, existencias: { type: ["number", "null"], description: "Cuántas hay de esa talla; null si no lo dijo" } }, required: ["talla", "existencias"] };
   return [
-    fn("registrar_movimiento", "Anota plata que entró (venta, pago de una clienta) o salió (gasto). Si no sabés con certeza en qué categoría va un gasto, usá categoria 'desconocida' y el panel le pregunta a Andrea.", {
-      sentido: { type: "string", enum: ["ingreso", "gasto"] },
-      monto: { type: "number", description: "Monto en la moneda indicada, mayor que 0" },
-      moneda: { type: "string", enum: ["CRC", "USD"] },
-      categoria: { type: "string", enum: [...cats, "desconocida"] },
-      metodo: { type: "string", enum: METODOS },
-      concepto: { type: "string", description: "Nota corta con las palabras de Andrea" },
-      feria: { type: "string", description: "Nombre exacto de una feria de la lista, si aplica" },
-      fecha: { type: "string", description: "AAAA-MM-DD" },
-    }, ["sentido", "monto", "moneda", "categoria", "metodo", "concepto", "fecha"]),
-    fn("cambiar_precio", "Cambia el precio de una pieza de la tienda.", { slug: { type: "string" }, precio: { type: "number" } }, ["slug", "precio"]),
+    fn("registrar_movimientos", "Anota plata que entró (ventas, pagos de clientas) o salió (gastos). Uno o varios a la vez. Siempre incluí el nombre de la persona si se sabe.", {
+      movimientos: { type: "array", items: { type: "object", properties: {
+        sentido: { type: "string", enum: ["ingreso", "gasto"] },
+        monto: { type: "number", description: "Mayor que 0, en la moneda indicada" },
+        moneda: { type: "string", enum: ["CRC", "USD"] },
+        categoria: { type: "string", enum: [...cats, "desconocida"], description: "Si no estás segura en cuál va un gasto, 'desconocida' (el panel le pregunta y aprende)" },
+        metodo: { type: "string", enum: METODOS },
+        concepto: { type: "string", description: "Nota corta en palabras de Andrea (qué se vendió o pagó)" },
+        persona: { type: "string", description: "A quién le pagó o quién le pagó/compró. Vacío si no aplica" },
+        feria: { type: "string", description: "Nombre exacto de una feria de la lista, si fue en una feria" },
+        fecha: { type: "string", description: "AAAA-MM-DD" },
+      }, required: ["sentido", "monto", "moneda", "categoria", "metodo", "concepto", "persona", "feria", "fecha"] } },
+    }, ["movimientos"]),
+    fn("preguntar", "Hacele UNA pregunta a Andrea cuando falta algo importante o no estás segura de lo que quiso decir. Dale opciones cortas para tocar.", {
+      pregunta: { type: "string" }, opciones: { type: "array", items: { type: "string" }, description: "2 a 6 respuestas cortas posibles" },
+    }, ["pregunta", "opciones"]),
+    fn("anular_movimiento", "Anula un movimiento anotado por error (queda tachado y no cuenta).", { id: { type: "string", description: "id exacto de la lista de movimientos" } }, ["id"]),
+    fn("guardar_persona", "Recuerda a una persona con la que Andrea hace negocio (clienta, proveedora, costurera…) y lo que hay que saber de ella.", {
+      nombre: { type: "string" }, rol: { type: "string", enum: ["clienta", "proveedor", "otro"] }, categoria: { type: "string", description: "Categoría de gasto de siempre, si es proveedora" }, notas: { type: "string" },
+    }, ["nombre", "rol"]),
+    fn("recordar", "Guarda un dato útil del negocio que Andrea quiere que recuerdes (precios de proveedores, costumbres, fechas fijas).", { texto: { type: "string" } }, ["texto"]),
+    fn("olvidar", "Borra algo que tenías anotado en tu memoria.", { id: { type: "string" } }, ["id"]),
+    fn("cambiar_precio", "Cambia el precio de una pieza.", { slug: { type: "string" }, precio: { type: "number" } }, ["slug", "precio"]),
     fn("mostrar_u_ocultar", "Esconde una pieza de la tienda (agotada) o la vuelve a mostrar.", { slug: { type: "string" }, visible: { type: "boolean" } }, ["slug", "visible"]),
+    fn("cambiar_tallas", "Actualiza las tallas de una pieza y cuántas quedan de cada una.", { slug: { type: "string" }, tallas: { type: "array", items: talla } }, ["slug", "tallas"]),
     fn("crear_coleccion", "Crea una colección nueva.", { nombre: { type: "string" } }, ["nombre"]),
     fn("mover_a_coleccion", "Pasa una pieza a una colección.", { slug: { type: "string" }, coleccion: { type: "string" } }, ["slug", "coleccion"]),
-    fn("crear_pieza", "Agrega una pieza nueva a la tienda (sin fotos todavía).", {
-      nombre: { type: "string" }, tipo: { type: "string", enum: ["Blusas", "Tops", "Suéteres", "Pañuelos", "Pantalones", "Faldas", "Vestidos", "Enterizos"] },
-      precio: { type: "number" }, coleccion: { type: "string" },
-    }, ["nombre", "tipo", "precio"]),
-    fn("crear_feria", "Anota una feria a la que Andrea va a ir o fue.", { nombre: { type: "string" }, fecha: { type: "string", description: "AAAA-MM-DD" } }, ["nombre", "fecha"]),
-    fn("borrar_feria", "Borra una feria de la lista (por ejemplo si se canceló o se anotó por error).", { id: { type: "string", description: "id exacto de la feria" } }, ["id"]),
-    fn("promocionar_post", "Empieza a promocionar un post de Instagram: el panel le muestra sus posts para que escoja, y después días y monto. Nunca cobra sin su autorización."),
-    fn("mejorar_foto", "Abre el paso para subir o escoger una foto de una pieza y mejorarla con IA.", { slug: { type: "string", description: "slug de la pieza, si se sabe" } }),
-    fn("ir_a", "Lleva a Andrea a una sección del panel cuando pregunta dónde está algo o quiere verlo.", {
-      seccion: { type: "string", enum: SECCIONES }, boton: { type: "string", description: "Texto corto del botón, ej. 'Ir a Ferias'" },
-    }, ["seccion", "boton"]),
-    fn("mostrar_resumen", "Muestra la tarjeta con lo que entró, salió y le queda este mes."),
+    fn("crear_producto", "Abre la ficha para meter un producto nuevo: foto, nombre, tipo, precio, tallas con cuántas hay, colección y descripción. Pasá todo lo que Andrea ya dijo; la ficha le pide lo que falte.", {
+      nombre: { type: "string" }, tipo: { type: "string", enum: TIPOS_PIEZA.slice(0, -1) }, precio: { type: "number" }, coleccion: { type: "string" },
+      descripcion: { type: "string" }, tallas: { type: "array", items: talla },
+    }),
+    fn("crear_feria", "Abre la ficha para anotar una feria (con buscador del lugar en el mapa).", {
+      nombre: { type: "string" }, fecha: { type: "string", description: "AAAA-MM-DD" }, lugar: { type: "string", description: "Lugar como lo dijo, para buscarlo en el mapa" },
+    }),
+    fn("borrar_feria", "Borra una feria de la lista.", { id: { type: "string", description: "id exacto de la feria" } }, ["id"]),
+    fn("promocionar", "Empieza a promocionar en Instagram un post o una historia: ella escoge cuál, días y monto, y la IA propone a quién mostrarlo. Nunca cobra sin su autorización.", { que: { type: "string", enum: ["post", "story"] } }, ["que"]),
+    fn("publicar_en_instagram", "Abre el paso para subir un post o una historia nueva a Instagram desde el panel (foto + texto).", {
+      que: { type: "string", enum: ["post", "story"] }, idea: { type: "string", description: "De qué quiere que hable el texto, si lo dijo" },
+    }, ["que"]),
+    fn("mejorar_foto", "Abre el paso para subir o escoger una foto de una pieza y mejorarla con IA.", { slug: { type: "string" } }),
+    fn("ir_a", "Lleva a Andrea a una sección del panel.", { seccion: { type: "string", enum: SECCIONES }, boton: { type: "string", description: "Texto corto del botón" } }, ["seccion", "boton"]),
+    fn("mostrar_resumen", "Muestra la etiqueta con lo que entró, salió y le queda este mes."),
+    fn("mostrar_reporte", "Muestra el reporte del mes con el análisis y recomendaciones."),
   ];
 }
 
 export async function POST(req: Request) {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return NextResponse.json({ motor: "local" }, { status: 501 });
+  const bloqueo = await permitido(req);
+  if (bloqueo) return bloqueo;
+  if (!process.env.OPENAI_API_KEY) return NextResponse.json({ motor: "local" }, { status: 501 });
 
-  const body = (await req.json().catch(() => null)) as { texto?: string; contexto?: Contexto; historial?: Turno[] } | null;
+  const body = (await req.json().catch(() => null)) as { texto?: string; contexto?: Contexto; historial?: Turno[]; porVoz?: boolean } | null;
   const texto = body?.texto?.slice(0, 1500).trim();
   const ctx = body?.contexto;
   if (!texto || !ctx) return NextResponse.json({ error: "Falta el texto." }, { status: 400 });
@@ -61,59 +90,71 @@ export async function POST(req: Request) {
   const piezas = (ctx.piezas ?? []).slice(0, 300);
   const propias = (ctx.categorias ?? []).slice(0, 60);
   const cats = [...new Set([...CATS.ingreso, ...CATS.gasto, ...propias.map((c) => c.nombre)])];
+  const h = hoy();
+  const diaSemana = DIAS_SEMANA[new Date(h + "T12:00:00Z").getUTCDay()];
+
   const sistema = [
-    "Sos el asistente de Eucalipto Chic, la marca de ropa de Andrea Bermúdez en Costa Rica. Sos cálida, profesional y muy servicial: resolvés, no solo explicás. Hablás en español de Costa Rica, con voseo, frases cortas y claras. Andrea no es técnica y casi siempre te habla por voz desde el celular.",
-    "Usá las herramientas para hacer las cosas. Nunca inventes montos, piezas ni ferias: si falta algo esencial (por ejemplo el monto), preguntalo en una sola frase y no llames herramientas.",
-    "Gastos que no conocés: si no estás segura de la categoría, usá categoria 'desconocida' para que el panel le pregunte y aprenda. Respetá lo que ya aprendiste (lista de abajo).",
-    "Si pregunta dónde está algo o cómo se hace, explicalo en una frase y llamá ir_a para llevarla. Si quiere promocionar un post, llamá promocionar_post. Si quiere mejorar o subir una foto, llamá mejorar_foto.",
-    "El panel tiene: Inicio (este chat), Plata (ventas, gastos, resumen del mes, IVA), Tienda (piezas, precios, colecciones, fotos), Ferias (próximas con foto y lugar; se borran ahí) y Anuncios (promociones de Instagram con tope mensual).",
-    "Contexto del negocio: la ropa la confecciona Juanita ('Confección (Juanita)'); la tela se compra aparte ('Tela'); vende en ferias, por WhatsApp y en la web; recibe muchos SINPE Móvil y tiene un datáfono MiPos de BAC ('Datáfono'). Si no dice el método, usá SINPE. Los pagos con ONVO se anotan solos.",
-    `Hoy es ${hoy()}. Montos en colones salvo que diga dólares. "45 mil" = 45000.`,
-    "Para preguntas sobre plata, contestá con los números del resumen. Siempre que propongas guardar algo, terminá preguntando si lo guardás.",
-    `Piezas (slug | nombre | precio | colección | oculta): ${piezas.map((p) => `${p.slug}|${p.nombre}|${p.precio}|${p.coleccion || "-"}|${p.oculta ? "sí" : "no"}`).join("; ")}`,
+    "Sos la asistente personal de Andrea Bermúdez, dueña de Eucalipto Chic, una marca de ropa de mujer en Costa Rica. Le ayudás con la plata, la tienda en línea, las ferias e Instagram.",
+    "Personalidad: cálida, tranquila, profesional y muy resolutiva, como una mano derecha de confianza. Hablás en español de Costa Rica con voseo, natural y con cariño, sin exagerar. Andrea casi siempre te habla por voz desde el celular y tus respuestas se leen en voz alta: respondé en 1 o 2 frases cortas, sin listas, sin emojis, sin símbolos raros, sin tecnicismos. Nunca digás que sos una IA ni hablés de herramientas.",
+    "Tu trabajo es quitarle problemas, no dárselos: hacé las cosas vos con las herramientas, anticipá lo que va a ocupar y proponé el siguiente paso. Si algo sale raro, explicalo simple y ofrecé la solución.",
+    "Nunca inventés montos, precios, nombres, fechas ni piezas. Si falta algo esencial o lo que dijo se puede entender de dos formas, usá 'preguntar' con UNA pregunta corta y opciones para tocar. Si estás segura, no preguntés de más.",
+    "Plata: usá registrar_movimientos (puede ser varios a la vez). Incluí siempre el nombre de la persona cuando lo diga. Si le pagó a una persona (costurera, planchado, mensajero, ayudante…) y no dijo a quién, preguntale el nombre ofreciendo las personas que ya conocés y 'Prefiero no decir'. Si una venta fue por SINPE o transferencia y no dijo de quién, preguntale de quién fue (con la opción 'No me acuerdo'); en ventas de feria no hace falta. Si la persona ya la conocés y tiene categoría de siempre, usala.",
+    "Categorías: si un gasto no calza claramente en una categoría, usá 'desconocida' y el panel le pregunta y lo aprende. Respetá lo aprendido. Si no dice cómo pagó: SINPE. 'Datáfono' es el MiPos de BAC.",
+    "Fechas: hoy es " + `${diaSemana} ${h}` + ". Entendé 'ayer', 'el sábado', 'el 15'. Montos en colones salvo que diga dólares; '45 mil' = 45000; 'un rojo' = 1000; 'una teja' = 100000.",
+    "Productos: si quiere meter un producto, llamá crear_producto con lo que ya dijo; la ficha le pide la foto, las tallas, cuántas hay de cada una y el precio. Si dice cuántas le quedan de algo, usá cambiar_tallas.",
+    "Ferias: crear_feria abre la ficha con el buscador de lugares; pasá el lugar tal como lo dijo. Instagram: 'promocionar' para dar alcance a un post o historia, 'publicar_en_instagram' para subir algo nuevo.",
+    "Memoria: si te cuenta algo estable que conviene recordar (quién es alguien, cuánto cobra un proveedor, costumbres), guardalo con guardar_persona o recordar. Usá tu memoria para responder mejor.",
+    "Preguntas sobre plata o el negocio: respondé con los números de los movimientos y resúmenes de abajo, exactos y en colones. Si no tenés el dato, decilo y ofrecé anotarlo.",
+    "Si Andrea solo saluda y hay preguntas pendientes, saludala y mencioná con suavidad solo la primera pendiente.",
+    "Todo lo que se guarda pasa por un botón de confirmación que ve Andrea; cuando propongás guardar, decí en una frase qué entendiste.",
+    "",
+    `Sección donde está Andrea: ${ctx.seccion ?? "inicio"}.`,
+    `Piezas (slug | nombre | precio | tipo | colección | tallas(cantidad) | estado): ${piezas.map((p) => `${p.slug}|${p.nombre}|${p.precio}|${p.tipo}|${p.coleccion || "-"}|${(p.tallas ?? []).map((t) => t.talla + (t.existencias != null ? `(${t.existencias})` : "")).join(" ") || "-"}|${p.oculta ? "escondida" : "visible"}${p.sinFoto ? ", sin foto" : ""}`).join("; ")}`,
     `Colecciones: ${(ctx.colecciones ?? []).join(", ") || "ninguna"}.`,
     `Ferias (id | nombre | fecha | lugar): ${(ctx.ferias ?? []).map((f) => `${f.id}|${f.nombre}|${f.fecha}|${f.lugar ?? "-"}`).join("; ") || "ninguna"}.`,
-    `Categorías propias de Andrea: ${propias.map((c) => `${c.nombre} (${c.sentido})`).join(", ") || "ninguna todavía"}.`,
-    `Lo que ya aprendiste (palabras → categoría): ${(ctx.aprendido ?? []).slice(-80).map((l) => `«${l.clave}» → ${l.categoria}`).join("; ") || "nada todavía"}.`,
-    `Resumen de plata: ${ctx.resumen}`,
+    `Personas que conocés: ${(ctx.personas ?? []).slice(0, 60).map((p) => `${p.nombre} (${p.rol ?? "-"}${p.categoria ? ", " + p.categoria : ""}${p.notas ? ", " + p.notas : ""}, ${p.veces} veces)`).join("; ") || "nadie todavía"}.`,
+    `Tu memoria (id | dato): ${(ctx.memoria ?? []).slice(-60).map((m) => `${m.id}|${m.texto}`).join("; ") || "vacía"}.`,
+    `Categorías propias: ${propias.map((c) => `${c.nombre} (${c.sentido})`).join(", ") || "ninguna"}. Aprendido: ${(ctx.aprendido ?? []).slice(-80).map((l) => `«${l.clave}» → ${l.categoria}`).join("; ") || "nada"}.`,
+    `Resumen: ${ctx.resumen}`,
+    `Últimos movimientos (id | fecha | entró/salió | colones | categoría | método | persona | detalle | feria): ${(ctx.movs ?? []).slice(0, 40).map((m) => `${m.id}|${m.fecha}|${m.sentido === "ingreso" ? "entró" : "salió"}|${Math.round(m.crc)}|${m.categoria}|${m.metodo}|${m.persona ?? "-"}|${m.concepto}|${m.feria ?? "-"}`).join("; ") || "ninguno"}.`,
+    `Preguntas pendientes de la revisión: ${(ctx.pendientes ?? []).join(" / ") || "ninguna"}.`,
+    ctx.tipoCambio ? `Dólar hoy (Hacienda): compra ${ctx.tipoCambio.compra}, venta ${ctx.tipoCambio.venta}.` : "",
   ].join("\n");
 
-  const historial = (body?.historial ?? []).slice(-10).filter((t) => t?.texto).map((t) => ({ role: t.de === "ella" ? "user" : "assistant", content: String(t.texto).slice(0, 600) }));
+  const historial = (body?.historial ?? []).slice(-16).filter((t) => t?.texto)
+    .map((t) => ({ role: t.de === "ella" ? "user" : "assistant", content: String(t.texto).slice(0, 900) }));
 
   try {
-    const r = await fetch(`${process.env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/responses`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-6-luna",
-        instructions: sistema,
-        input: [...historial, { role: "user", content: texto }],
-        tools: herramientas(cats),
-        tool_choice: "auto",
-        reasoning: { effort: "low" },
-        max_output_tokens: 900,
-        store: false,
-      }),
-      signal: AbortSignal.timeout(25_000),
-    });
-    if (!r.ok) throw new Error(`OpenAI ${r.status}: ${(await r.text()).slice(0, 300)}`);
-    const j = (await r.json()) as { output?: { type: string; name?: string; arguments?: string; content?: { type: string; text?: string }[] }[] };
+    const j = await responses({
+      instructions: sistema,
+      input: [...historial, { role: "user", content: texto }],
+      tools: herramientas(cats),
+      tool_choice: "auto",
+      parallel_tool_calls: true,
+      reasoning: { effort: process.env.OPENAI_EFFORT || "medium" },
+      max_output_tokens: 5000,
+    }, 50_000);
 
-    let dicho = "";
     const acciones: Accion[] = [];
-    let tarjeta: Tarjeta | undefined;
-    let porDefecto = "";
+    const tarjetas: { t: Tarjeta; texto: string; p: number }[] = [];
     for (const item of j.output ?? []) {
-      if (item.type === "message") for (const c of item.content ?? []) if (c.type === "output_text" && c.text) dicho += c.text;
       if (item.type !== "function_call") continue;
       let a: Record<string, unknown> = {};
       try { a = JSON.parse(item.arguments ?? "{}"); } catch { continue; }
-      const res = convertir(item.name, a, piezas, ctx, cats);
-      if (!res) continue;
-      if ("tarjeta" in res) { tarjeta ??= res.tarjeta; porDefecto ||= res.texto; } else acciones.push(res);
+      for (const res of convertir(item.name, a, piezas, ctx)) {
+        if ("tarjeta" in res) tarjetas.push({ t: res.tarjeta, texto: res.texto, p: res.p }); else acciones.push(res);
+      }
     }
-    if (acciones.length && !tarjeta) tarjeta = { tipo: "confirmar", acciones };
-    const respuesta = dicho.trim() || porDefecto || (acciones.length ? "Esto es lo que entendí. ¿Lo guardo?" : "No te entendí bien, ¿me lo decís de otra forma?");
+    // Lo más importante primero: una pregunta, después pasos con ficha, después lo que hay que confirmar.
+    tarjetas.sort((x, y) => x.p - y.p);
+    const principal = tarjetas[0];
+    let tarjeta: Tarjeta | undefined;
+    let porDefecto = "";
+    if (principal && (principal.p <= 2 || !acciones.length)) { tarjeta = principal.t; porDefecto = principal.texto; }
+    else if (acciones.length) tarjeta = { tipo: "confirmar", acciones };
+    const dicho = textoDe(j).trim();
+    const respuesta = (principal?.t.tipo === "opciones" ? principal.texto : dicho) || porDefecto
+      || (acciones.length ? "Esto es lo que entendí. ¿Lo guardo?" : "Perdón, no te entendí bien. ¿Me lo decís de otra forma?");
     return NextResponse.json({ motor: "openai", respuesta, acciones: tarjeta?.tipo === "confirmar" ? acciones : [], tarjeta });
   } catch (e) {
     console.error("[asistente]", e instanceof Error ? e.message : e);
@@ -121,71 +162,121 @@ export async function POST(req: Request) {
   }
 }
 
+type Res = Accion | { tarjeta: Tarjeta; texto: string; p: number };
+
 /** Valida lo que propuso la IA: solo pasa lo que tiene sentido para la tienda. */
-function convertir(nombre: string | undefined, a: Record<string, unknown>, piezas: Pieza[], ctx: Contexto, cats: string[]): Accion | { tarjeta: Tarjeta; texto: string } | null {
-  const id = crypto.randomUUID();
+function convertir(nombre: string | undefined, a: Record<string, unknown>, piezas: PiezaCtx[], ctx: Contexto): Res[] {
+  const id = () => crypto.randomUUID();
   const num = (v: unknown) => (typeof v === "number" && isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null);
   const txt = (v: unknown, max = 80) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
   const pieza = (slug: unknown) => piezas.find((p) => p.slug === slug) ?? null;
   const fecha = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : hoy());
+  const tallas = (v: unknown): Talla[] => (Array.isArray(v) ? v : []).slice(0, 12).flatMap((t) => {
+    const o = (t ?? {}) as Record<string, unknown>;
+    const talla = txt(o.talla, 30);
+    const ex = typeof o.existencias === "number" && o.existencias >= 0 ? Math.round(o.existencias) : null;
+    return talla ? [{ talla, existencias: ex }] : [];
+  });
 
   switch (nombre) {
-    case "registrar_movimiento": {
-      const sentido = a.sentido === "ingreso" || a.sentido === "gasto" ? a.sentido : null;
-      const monto = num(a.monto);
-      if (!sentido || !monto) return null;
-      const propias = (ctx.categorias ?? []).filter((c) => c.sentido === sentido).map((c) => c.nombre);
-      const validas = [...CATS[sentido], ...propias];
-      const feria = ctx.ferias.find((f) => f.nombre === a.feria)?.nombre;
-      const mov: Movimiento = {
-        id, tipo: "movimiento", sentido, monto, moneda: a.moneda === "USD" ? "USD" : "CRC",
-        categoria: validas.includes(String(a.categoria)) ? String(a.categoria) : sentido === "gasto" ? "Otro" : "Venta directa",
-        metodo: METODOS.includes(String(a.metodo)) ? String(a.metodo) : "SINPE", concepto: txt(a.concepto, 200) ?? String(a.categoria), feria, fecha: fecha(a.fecha),
-      };
-      if (sentido === "gasto" && (a.categoria === "desconocida" || !validas.includes(String(a.categoria)))) {
-        return { tarjeta: { tipo: "categoria", mov: { ...mov, categoria: "Otro" } }, texto: "No sé todavía qué tipo de gasto es. ¿En cuál va? Así lo aprendo." };
+    case "registrar_movimientos": {
+      const lista = Array.isArray(a.movimientos) ? a.movimientos.slice(0, 10) : [];
+      const out: Res[] = [];
+      for (const x of lista as Record<string, unknown>[]) {
+        const sentido = x.sentido === "ingreso" || x.sentido === "gasto" ? x.sentido : null;
+        const monto = num(x.monto);
+        if (!sentido || !monto) continue;
+        const validas = [...CATS[sentido], ...(ctx.categorias ?? []).filter((c) => c.sentido === sentido).map((c) => c.nombre)];
+        const desconocida = !validas.includes(String(x.categoria));
+        const mov: Movimiento = {
+          id: id(), tipo: "movimiento", sentido, monto, moneda: x.moneda === "USD" ? "USD" : "CRC",
+          categoria: desconocida ? (sentido === "gasto" ? "Otro" : "Venta directa") : String(x.categoria),
+          metodo: METODOS.includes(String(x.metodo)) ? String(x.metodo) : "SINPE",
+          concepto: txt(x.concepto, 200) ?? String(x.categoria),
+          feria: ctx.ferias.find((f) => f.nombre === x.feria)?.nombre, fecha: fecha(x.fecha),
+          persona: txt(x.persona, 80) ?? undefined,
+        };
+        if (sentido === "gasto" && desconocida && lista.length === 1) {
+          out.push({ tarjeta: { tipo: "categoria", mov }, texto: "Ese gasto no lo conozco todavía. ¿En cuál categoría va? Así lo aprendo.", p: 1 });
+        } else out.push(mov);
       }
-      void cats;
-      return mov;
+      return out;
+    }
+    case "preguntar": {
+      const pregunta = txt(a.pregunta, 200);
+      const ops = (Array.isArray(a.opciones) ? a.opciones : []).map((o) => txt(o, 40)).filter((o): o is string => !!o).slice(0, 6);
+      return pregunta ? [{ tarjeta: { tipo: "opciones", ops }, texto: pregunta, p: 0 }] : [];
+    }
+    case "anular_movimiento": {
+      const m = (ctx.movs ?? []).find((x) => x.id === a.id);
+      return m ? [{ id: id(), tipo: "anular", mov: m.id, nombre: `${m.concepto} (₡${Math.round(m.crc).toLocaleString("es-CR")})` }] : [];
+    }
+    case "guardar_persona": {
+      const n = txt(a.nombre, 80);
+      const rol = a.rol === "clienta" || a.rol === "proveedor" || a.rol === "otro" ? a.rol : undefined;
+      return n ? [{ id: id(), tipo: "persona", nombre: n, rol, categoria: txt(a.categoria, 40) ?? undefined, notas: txt(a.notas, 300) ?? undefined }] : [];
+    }
+    case "recordar": {
+      const t = txt(a.texto, 300);
+      return t ? [{ id: id(), tipo: "recordar", texto: t }] : [];
+    }
+    case "olvidar": {
+      const m = (ctx.memoria ?? []).find((x) => x.id === a.id);
+      return m ? [{ id: id(), tipo: "olvidar", memoria: m.id, texto: m.texto }] : [];
     }
     case "cambiar_precio": {
       const p = pieza(a.slug), precio = num(a.precio);
-      return p && precio ? { id, tipo: "precio", slug: p.slug, nombre: p.nombre, precio } : null;
+      return p && precio ? [{ id: id(), tipo: "precio", slug: p.slug, nombre: p.nombre, precio }] : [];
     }
     case "mostrar_u_ocultar": {
       const p = pieza(a.slug);
-      return p && typeof a.visible === "boolean" ? { id, tipo: "visible", slug: p.slug, nombre: p.nombre, visible: a.visible } : null;
+      return p && typeof a.visible === "boolean" ? [{ id: id(), tipo: "visible", slug: p.slug, nombre: p.nombre, visible: a.visible }] : [];
+    }
+    case "cambiar_tallas": {
+      const p = pieza(a.slug), t = tallas(a.tallas);
+      return p && t.length ? [{ id: id(), tipo: "tallas", slug: p.slug, nombre: p.nombre, tallas: t }] : [];
     }
     case "crear_coleccion": {
       const n = txt(a.nombre, 40);
-      return n ? { id, tipo: "coleccion", nombre: n } : null;
+      return n ? [{ id: id(), tipo: "coleccion", nombre: n }] : [];
     }
     case "mover_a_coleccion": {
       const p = pieza(a.slug), c = txt(a.coleccion, 40);
-      return p && c ? { id, tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: c } : null;
+      return p && c ? [{ id: id(), tipo: "mover", slug: p.slug, nombre: p.nombre, coleccion: c }] : [];
     }
-    case "crear_pieza": {
-      const n = txt(a.nombre, 60), t = txt(a.tipo, 20);
-      return n && t ? { id, tipo: "pieza", nombre: n, tipoPieza: t, precio: num(a.precio) ?? 0, coleccion: txt(a.coleccion, 40) ?? undefined } : null;
+    case "crear_producto": {
+      const t = tallas(a.tallas);
+      const tipo = TIPOS_PIEZA.includes(String(a.tipo)) ? String(a.tipo) : undefined;
+      return [{ tarjeta: { tipo: "producto", borrador: {
+        nombre: txt(a.nombre, 60) ?? undefined, tipoPieza: tipo, precio: num(a.precio) ?? undefined,
+        coleccion: txt(a.coleccion, 40) ?? undefined, descripcion: txt(a.descripcion, 600) ?? undefined, tallas: t.length ? t : undefined,
+      } }, texto: "¡Qué bueno! Llenemos la ficha. Empezá por la foto.", p: 2 }];
     }
-    case "crear_feria": {
-      const n = txt(a.nombre, 60);
-      return n ? { id, tipo: "feria", nombre: n, fecha: fecha(a.fecha) } : null;
-    }
+    case "crear_feria": return [{ tarjeta: { tipo: "feria", borrador: {
+      nombre: txt(a.nombre, 60) ?? undefined, fecha: typeof a.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(a.fecha) ? a.fecha : undefined, lugar: txt(a.lugar, 120) ?? undefined,
+    } }, texto: "Dale, anotemos la feria. Confirmá el lugar en el mapa.", p: 2 }];
     case "borrar_feria": {
       const f = ctx.ferias.find((x) => x.id === a.id);
-      return f ? { id, tipo: "borrar_feria", feria: f.id, nombre: f.nombre } : null;
+      return f ? [{ id: id(), tipo: "borrar_feria", feria: f.id, nombre: f.nombre }] : [];
     }
-    case "promocionar_post": return { tarjeta: { tipo: "posts" }, texto: "¡Dale! ¿Cuál post querés que vea más gente? Tocá la foto." };
+    case "promocionar": {
+      const que = a.que === "story" ? "story" : "post";
+      return [{ tarjeta: { tipo: "posts", que }, texto: que === "story" ? "¡Dale! Escogé la historia que querés que vea más gente." : "¡Dale! Escogé el post que querés que vea más gente.", p: 2 }];
+    }
+    case "publicar_en_instagram": {
+      const que = a.que === "story" ? "story" : "post";
+      return [{ tarjeta: { tipo: "publicar", que, caption: txt(a.idea, 300) ?? undefined }, texto: "Hagámoslo. Escogé la foto y te ayudo con el texto.", p: 2 }];
+    }
     case "mejorar_foto": {
       const p = pieza(a.slug);
-      return { tarjeta: { tipo: "foto", slug: p?.slug }, texto: p ? `Subí la foto de ${p.nombre} aquí y la mejoramos.` : "¿De cuál pieza es la foto? Escogela aquí." };
+      return [{ tarjeta: { tipo: "foto", slug: p?.slug }, texto: p ? `Subí la foto de ${p.nombre} y la mejoramos.` : "¿De cuál pieza es la foto?", p: 2 }];
     }
     case "ir_a": {
       const s = SECCIONES.includes(a.seccion as Seccion) ? (a.seccion as Seccion) : null;
-      return s ? { tarjeta: { tipo: "ir", seccion: s, boton: txt(a.boton, 30) ?? "Ir" }, texto: "Te llevo." } : null;
+      return s ? [{ tarjeta: { tipo: "ir", seccion: s, boton: txt(a.boton, 30) ?? "Ir" }, texto: "Te llevo.", p: 4 }] : [];
     }
-    case "mostrar_resumen": return { tarjeta: { tipo: "resumen" }, texto: "Así vas este mes:" };
+    case "mostrar_resumen": return [{ tarjeta: { tipo: "resumen" }, texto: "Así vas este mes.", p: 4 }];
+    case "mostrar_reporte": return [{ tarjeta: { tipo: "reporte" }, texto: "Aquí está tu reporte del mes.", p: 4 }];
   }
-  return null;
+  return [];
 }

@@ -6,7 +6,7 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith("/admin/entrar") || pathname.startsWith("/api/entrar")) return NextResponse.next();
   if (!protegido()) {
     // Sin contraseña configurada, la IA no se puede usar: así nadie gasta los créditos de OpenAI desde afuera.
-    if ((pathname.startsWith("/api/asistente") || pathname.startsWith("/api/voz")) && process.env.OPENAI_API_KEY) {
+    if ((pathname.startsWith("/api/asistente") || pathname.startsWith("/api/voz") || pathname.startsWith("/api/plata")) && process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "Falta ADMIN_PASSWORD en Vercel." }, { status: 403 });
     }
     return NextResponse.next();
@@ -18,4 +18,4 @@ export async function middleware(req: NextRequest) {
   return NextResponse.redirect(url);
 }
 
-export const config = { matcher: ["/admin/:path*", "/api/asistente/:path*", "/api/acciones/:path*", "/api/fotos/:path*", "/api/anuncios/:path*", "/api/lugares/:path*", "/api/voz/:path*"] };
+export const config = { matcher: ["/admin/:path*", "/api/asistente/:path*", "/api/acciones/:path*", "/api/fotos/:path*", "/api/anuncios/:path*", "/api/lugares/:path*", "/api/voz/:path*", "/api/plata/:path*"] };

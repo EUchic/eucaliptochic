@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
+import { callar, desbloquear } from "./hablar";
+
+// Un solo AudioContext para toda la sesión: en iPhone se desbloquea con el primer toque y después sirve
+// también para volver a escuchar sola (modo conversación).
+let ctxGlobal: AudioContext | null = null;
 
 // El micrófono del asistente. Graba lo que dice Andrea, nota cuando deja de hablar y lo manda solo.
 // Con OpenAI conectado el audio se convierte en texto en el servidor (sirve igual en iPhone, Android
@@ -69,8 +74,9 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
   /** Graba con el micrófono y se detiene sola cuando Andrea se queda callada. */
   const grabar = async () => {
     const AC = window.AudioContext || (window as any).webkitAudioContext;
-    let ctx: AudioContext | null = null;
-    try { ctx = AC ? new AC() : null; ctx?.resume().catch(() => {}); } catch { ctx = null; }
+    try { if (!ctxGlobal && AC) ctxGlobal = new AC(); ctxGlobal?.resume().catch(() => {}); } catch { ctxGlobal = null; }
+    const ctx = ctxGlobal;
+    let fuente: MediaStreamAudioSourceNode | null = null;
 
     let abortado = false;
     sesion.current = { parar: () => { abortado = true; } };
@@ -80,7 +86,6 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     } catch (e: any) {
-      ctx?.close().catch(() => {});
       sesion.current = null; setEstado("quieto");
       if (!abortado) {
         const permiso = e?.name === "NotAllowedError" || e?.name === "SecurityError";
@@ -94,7 +99,7 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
       return;
     }
     if (abortado) {
-      stream.getTracks().forEach((t) => t.stop()); ctx?.close().catch(() => {});
+      stream.getTracks().forEach((t) => t.stop());
       sesion.current = null; setEstado("quieto");
       return;
     }
@@ -115,7 +120,7 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
       cerrado = true;
       cancelAnimationFrame(raf); clearTimeout(tope);
       stream.getTracks().forEach((t) => t.stop());
-      ctx?.close().catch(() => {});
+      try { fuente?.disconnect(); } catch {}
       pintar(0);
       sesion.current = null;
       if (!mandar) { setEstado("quieto"); return; }
@@ -139,7 +144,7 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
     sesion.current = { parar };
 
     try { mr.start(); } catch {
-      stream.getTracks().forEach((t) => t.stop()); ctx?.close().catch(() => {});
+      stream.getTracks().forEach((t) => t.stop());
       sesion.current = null; setEstado("quieto");
       cb.current.avisar("No pude grabar aquí. Escribilo abajo.", true);
       return;
@@ -151,7 +156,8 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
       try {
         const an = ctx.createAnalyser();
         an.fftSize = 1024;
-        ctx.createMediaStreamSource(stream).connect(an);
+        fuente = ctx.createMediaStreamSource(stream);
+        fuente.connect(an);
         const buf = new Float32Array(an.fftSize);
         let piso = Infinity, umbral = 0.02, suave = 0, ultimaVoz = 0;
         const tick = () => {
@@ -223,9 +229,10 @@ export function useVoz({ alTexto, avisar, pistas }: Opciones) {
     try { r.start(); } catch { problema = "No pude empezar a dictar. Probá de nuevo."; terminar(); }
   };
 
-  const empezar = useCallback(() => {
+  const empezar = useCallback((porToque = true) => {
     if (sesion.current) return;
-    try { window.speechSynthesis?.cancel(); } catch {}
+    callar();
+    if (porToque) desbloquear();
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const puedeGrabar = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
     if (nube.current !== true) revisar();
