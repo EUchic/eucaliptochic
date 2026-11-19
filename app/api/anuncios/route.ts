@@ -25,7 +25,8 @@ function comprometido(lista: Promo[]) {
   const mes = new Date(hoyCR().slice(0, 7) + "-01T00:00:00-06:00").getTime();
   return lista
     .filter((p) => Date.parse(p.creado) >= mes && p.estado !== "error")
-    .reduce((s, p) => s + conIva(p.gasto_registrado || p.estado === "terminada" ? Number(p.gastado) : p.total), 0);
+    // Una promoción detenida ya no gasta más: solo cuenta lo que alcanzó a gastar, así se puede hacer otra.
+    .reduce((s, p) => s + conIva(p.gasto_registrado || p.estado === "terminada" || p.estado === "detenida" ? Number(p.gastado) : p.total), 0);
 }
 
 async function estado() {
