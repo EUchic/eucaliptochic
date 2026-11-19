@@ -116,6 +116,13 @@ let conocidasGuardadas: { lista: string[]; cuando: number } | null = null;
 export async function cuentasConocidas(): Promise<string[]> {
   if (conocidasGuardadas && Date.now() - conocidasGuardadas.cuando < 30 * 60e3) return conocidasGuardadas.lista;
   const nombres = new Set<string>();
+  const menciones = (t?: string) => { for (const m of (t ?? "").matchAll(/@([A-Za-z0-9._]{1,30})/g)) nombres.add(m[1].replace(/\.+$/, "").toLowerCase()); };
+  // Las cuentas que ella misma ha mencionado (@) en sus posts e historias.
+  try {
+    const j = await graph<{ data: { caption?: string }[] }>(`${META.instagram}/media`, "GET", { fields: "caption", limit: "100" });
+    for (const m of j.data ?? []) menciones(m.caption);
+  } catch {}
+  try { for (const h of (await graph<{ data: { caption?: string }[] }>(`${META.instagram}/stories`, "GET", { fields: "caption" })).data ?? []) menciones(h.caption); } catch {}
   try {
     const j = await graph<{ data: { comments?: { data: { username?: string }[] } }[] }>(`${META.instagram}/media`, "GET", { fields: "comments.limit(50){username}", limit: "25" });
     for (const m of j.data ?? []) for (const c of m.comments?.data ?? []) if (c.username) nombres.add(c.username.toLowerCase());
@@ -124,6 +131,7 @@ export async function cuentasConocidas(): Promise<string[]> {
     const j = await graph<{ data: { username?: string }[] }>(`${META.instagram}/tags`, "GET", { fields: "username", limit: "50" });
     for (const t of j.data ?? []) if (t.username) nombres.add(t.username.toLowerCase());
   } catch {}
+  nombres.delete("eucaliptochicr");
   const lista = [...nombres].filter((u) => /^[a-z0-9._]{1,30}$/.test(u)).slice(0, 300);
   conocidasGuardadas = { lista, cuando: Date.now() };
   return lista;
