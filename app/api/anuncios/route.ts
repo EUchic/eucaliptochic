@@ -78,7 +78,7 @@ export async function GET(req: Request) {
     if (que === "revisar_ig") {
       // Solo lectura: qué permisos tiene la conexión y qué responde Instagram al buscar una cuenta.
       const busqueda = await probarBusqueda("zococr");
-      return NextResponse.json({ permisos: await permisos().catch((e) => (e as Error).message), busqueda });
+      return NextResponse.json({ permisos: await permisos().catch((e) => (e as Error).message), busqueda, conocidas: (await cuentasConocidas()).length });
     }
     if (que === "cuentas") {
       // Sugerencias para etiquetar: las que ya etiquetó, las que comentan o la etiquetan, y la cuenta exacta si existe.

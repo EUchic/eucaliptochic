@@ -342,7 +342,7 @@ function BuscarCuenta({ ya, agregar }: { ya: string[]; agregar: (u: string) => v
         </ul>
       )}
       {abierto && q.length >= 2 && !buscando && !lista.some((c) => c.username === limpio) && valida && (
-        <p className="pn-nota">No encontré a @{limpio} como cuenta de negocio. Si es una cuenta personal, igual la podés agregar si el usuario está bien escrito.</p>
+        <p className="pn-nota">Si no sale en la lista, escribí el usuario completo, revisá que esté bien escrito y tocá «Agregar».</p>
       )}
     </div>
   );
