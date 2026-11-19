@@ -105,7 +105,8 @@ export async function POST(req: Request) {
       // Prepara una foto de la tienda en Instagram SIN publicarla, para saber si publicar funciona.
       const imagen = String((b as { imagen?: string }).imagen ?? "");
       if (!imagen.startsWith(`${URL_BASE}/storage/v1/object/public/fotos/`) || !/\.jpe?g$/.test(imagen)) return no("Esa foto no es de la tienda.", 400);
-      try { await probarPublicar(imagen); return NextResponse.json({ ok: true }); }
+      const etiquetas = (Array.isArray(b.etiquetas) ? b.etiquetas : []).map((u) => String(u).replace(/^@/, "").toLowerCase()).filter((u) => /^[a-z0-9._]{1,30}$/.test(u)).slice(0, 5);
+      try { await probarPublicar(imagen, etiquetas, b.que === "story" ? "story" : "post"); return NextResponse.json({ ok: true }); }
       catch (e) { return NextResponse.json({ ok: false, codigo: e instanceof ErrorMeta ? e.codigo : undefined, mensaje: (e as Error).message }); }
     }
 

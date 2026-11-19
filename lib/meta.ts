@@ -122,8 +122,8 @@ async function preparar(p: { imagen: string; caption: string; que: "post" | "sto
 }
 
 /** Revisa que se pueda publicar sin publicar nada: prepara la foto en Instagram y la deja sin publicar (se descarta sola). */
-export async function probarPublicar(imagen: string) {
-  await preparar({ imagen, caption: "", que: "post" });
+export async function probarPublicar(imagen: string, etiquetas?: string[], que: "post" | "story" = "post") {
+  await preparar({ imagen, caption: "", que, etiquetas });
   return true;
 }
 
