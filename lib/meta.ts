@@ -108,7 +108,7 @@ export async function buscarCuenta(usuario: string): Promise<Cuenta | null> {
       META.instagram, "GET", { fields: `business_discovery.username(${u}){username,name,profile_picture_url,followers_count}` });
     const b = j.business_discovery;
     return b ? { username: b.username, nombre: b.name, foto: b.profile_picture_url, seguidores: b.followers_count, fuente: "exacta" } : null;
-  } catch { return null; }
+  } catch (e) { console.error("[instagram] buscar cuenta:", (e as ErrorMeta).codigo, (e as Error).message); return null; }
 }
 
 /** Cuentas que ya tienen que ver con Eucalipto: quienes comentan sus posts y quienes la etiquetan (si Meta da permiso). */
