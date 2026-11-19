@@ -71,9 +71,13 @@ function herramientas(cats: string[]) {
       nombre: { type: "string" }, fecha: { type: "string", description: "AAAA-MM-DD" }, lugar: { type: "string", description: "Lugar como lo dijo, para buscarlo en el mapa" },
     }),
     fn("borrar_feria", "Borra una feria de la lista.", { id: { type: "string", description: "id exacto de la feria" } }, ["id"]),
-    fn("promocionar", "Empieza a promocionar en Instagram un post o una historia: ella escoge cuál, días y monto, y la IA propone a quién mostrarlo. Nunca cobra sin su autorización.", { que: { type: "string", enum: ["post", "story"] } }, ["que"]),
+    fn("promocionar", "Empieza a promocionar en Instagram un post o una historia: ella escoge cuál, desde cuándo, cuántos días (1 a 30), cuánto por día (cualquier monto desde el mínimo de Meta) y si lleva música; la IA propone a quién mostrarlo. Nunca cobra sin su autorización. Si ya dijo días, monto o música, pasalos.", {
+      que: { type: "string", enum: ["post", "story"] }, dias: { type: "number", description: "Cuántos días, si lo dijo" },
+      por_dia: { type: "number", description: "Colones por día, si lo dijo" }, musica: { type: "boolean", description: "Si quiere música (o no), si lo dijo" },
+    }, ["que"]),
     fn("publicar_en_instagram", "Abre el paso para subir un post o una historia nueva a Instagram desde el panel (foto + texto).", {
       que: { type: "string", enum: ["post", "story"] }, idea: { type: "string", description: "De qué quiere que hable el texto, si lo dijo" },
+      etiquetas: { type: "array", items: { type: "string" }, description: "Usuarios de Instagram que quiere etiquetar (sin @), si los dijo" },
     }, ["que"]),
     fn("disenar_post", "Abre el diseñador de posts con IA (como Canva): Andrea escoge la foto, la IA escribe los textos y lo arma con su logo (y el de la organizadora si es una feria); después lo guarda o lo publica en Instagram. Usalo cuando quiere hacer un post, un arte, un flyer o una historia para una feria, una colección nueva, una prenda, una oferta u otra cosa.", {
       tipo: { type: "string", enum: ["feria", "coleccion", "prenda", "oferta", "otro"] },
@@ -322,11 +326,14 @@ function convertir(nombre: string | undefined, a: Record<string, unknown>, pieza
     }
     case "promocionar": {
       const que = a.que === "story" ? "story" : "post";
-      return [{ tarjeta: { tipo: "posts", que }, texto: que === "story" ? "¡Dale! Escogé la historia que querés que vea más gente." : "¡Dale! Escogé el post que querés que vea más gente.", p: 2 }];
+      const dias = typeof a.dias === "number" && a.dias >= 1 && a.dias <= 30 ? Math.round(a.dias) : undefined;
+      const porDia = typeof a.por_dia === "number" && a.por_dia >= 300 && a.por_dia <= 50_000 ? Math.round(a.por_dia) : undefined;
+      return [{ tarjeta: { tipo: "posts", que, dias, porDia, musica: typeof a.musica === "boolean" ? a.musica : undefined }, texto: que === "story" ? "¡Dale! Escogé la historia que querés que vea más gente." : "¡Dale! Escogé el post que querés que vea más gente.", p: 2 }];
     }
     case "publicar_en_instagram": {
       const que = a.que === "story" ? "story" : "post";
-      return [{ tarjeta: { tipo: "publicar", que, caption: txt(a.idea, 300) ?? undefined }, texto: "Hagámoslo. Escogé la foto y te ayudo con el texto.", p: 2 }];
+      const etiquetas = (Array.isArray(a.etiquetas) ? a.etiquetas : []).map((u) => String(u).replace(/^@/, "").toLowerCase()).filter((u) => /^[a-z0-9._]{1,30}$/.test(u)).slice(0, 20);
+      return [{ tarjeta: { tipo: "publicar", que, caption: txt(a.idea, 300) ?? undefined, etiquetas: etiquetas.length ? etiquetas : undefined }, texto: "Hagámoslo. Escogé la foto y te ayudo con el texto.", p: 2 }];
     }
     case "mejorar_foto": {
       const p = pieza(a.slug);

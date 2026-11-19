@@ -9,12 +9,12 @@ export type Promo = {
   por_dia: number; dias: number; total: number; inicio: string; fin: string;
   estado: "creando" | "activa" | "detenida" | "terminada" | "error"; gastado: number; alcance: number; mensajes: number;
 };
-export type InfoAnuncios = { conectado: boolean; tope?: number | null; usado?: number; restante?: number | null; publico?: string; promos?: Promo[] };
+export type InfoAnuncios = { conectado: boolean; tope?: number | null; usado?: number; restante?: number | null; publico?: string; promos?: Promo[]; minimo?: number; etiquetas?: string[] };
 
 export const IVA = 1.13;
 export const conIva = (n: number) => Math.round(n * IVA);
 export const DIAS = [1, 2, 3, 5, 7, 10, 14];
-export const MONTOS = [2000, 2500, 3000];
+export const MONTOS = [1000, 1500, 2000, 2500, 3000, 5000];
 export const RECOMENDADO = 2500;
 export const TOPES = [15000, 25000, 40000];
 
@@ -28,7 +28,7 @@ export const primeraLinea = (t: string | null) => (t ?? "").split("\n")[0].trim(
 export const plata = (n: number) => "₡" + Math.round(n).toLocaleString("es-CR").replace(/[.,\s]/g, "\u00a0");
 
 /** Desde cuándo: hoy, mañana o terminando el día de una feria que viene. */
-export type Arranque = { clave: string; etiqueta: string; feria?: Feria };
+export type Arranque = { clave: string; etiqueta: string; feria?: Feria; fecha?: string };
 export function arranques(ferias: Feria[]): Arranque[] {
   const h = hoyCR();
   const prox = ferias.filter((f) => f.fecha > h && f.fecha <= sumar(h, 45)).sort((a, b) => a.fecha.localeCompare(b.fecha)).slice(0, 2);
@@ -42,14 +42,14 @@ export function arranques(ferias: Feria[]): Arranque[] {
 /** Fechas reales de la promoción según desde cuándo y cuántos días. */
 export function calendario(a: Arranque, dias: number): { inicio: string; dias: number; fin: string; texto: string } {
   const h = hoyCR();
-  let inicio = a.clave === "manana" ? sumar(h, 1) : h;
+  let inicio = a.fecha && a.fecha >= h ? a.fecha : a.clave === "manana" ? sumar(h, 1) : h;
   let d = dias;
   if (a.feria) {
     // Termina el día de la feria; si no da el tiempo, empieza hoy y dura lo que alcance.
     inicio = sumar(a.feria.fecha, -(dias - 1));
     if (inicio < h) { inicio = h; d = entre(h, a.feria.fecha) + 1; }
   }
-  d = Math.max(1, Math.min(14, d));
+  d = Math.max(1, Math.min(30, d));
   const fin = sumar(inicio, d - 1);
   const texto = d === 1 ? `Solo el ${fechaCorta(inicio)}` : `Del ${fechaCorta(inicio)} al ${fechaCorta(fin)} (${d} días)`;
   return { inicio, dias: d, fin, texto };

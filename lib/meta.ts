@@ -93,11 +93,21 @@ export async function historias(): Promise<Post[]> {
 
 /** Publica una foto (JPEG con URL pública) en el feed o en historias. Solo se llama con la confirmación de Andrea. */
 /** Paso 1 y 2: Instagram baja la foto y la prepara (todavía no se publica nada). */
-async function preparar(p: { imagen: string; caption: string; que: "post" | "story" }): Promise<string> {
+/** Etiquetas: en los posts van en un punto de la foto; en las historias solo el usuario. */
+function etiquetasDe(usuarios: string[] | undefined, que: "post" | "story") {
+  const u = (usuarios ?? []).slice(0, 20);
+  if (!u.length) return undefined;
+  if (que === "story") return u.map((username) => ({ username }));
+  // Repartidas en la parte de abajo de la foto, para que no tapen la cara.
+  return u.map((username, i) => ({ username, x: Math.round((0.2 + (0.6 * (i % 4)) / 3) * 100) / 100, y: Math.round((0.72 + 0.08 * Math.floor(i / 4)) * 100) / 100 }));
+}
+
+async function preparar(p: { imagen: string; caption: string; que: "post" | "story"; etiquetas?: string[] }): Promise<string> {
   let contenedor: string;
+  const user_tags = etiquetasDe(p.etiquetas, p.que);
   try {
     contenedor = (await graph<{ id: string }>(`${META.instagram}/media`, "POST",
-      p.que === "story" ? { image_url: p.imagen, media_type: "STORIES" } : { image_url: p.imagen, caption: p.caption })).id;
+      p.que === "story" ? { image_url: p.imagen, media_type: "STORIES", user_tags } : { image_url: p.imagen, caption: p.caption, user_tags })).id;
   } catch (e) { console.error("[instagram] preparar:", (e as ErrorMeta).codigo, (e as Error).message); throw e; }
   for (let i = 0; i < 20; i++) {
     const e = await graph<{ status_code?: string; status?: string }>(contenedor, "GET", { fields: "status_code,status" });
@@ -117,7 +127,7 @@ export async function probarPublicar(imagen: string) {
   return true;
 }
 
-export async function publicar(p: { imagen: string; caption: string; que: "post" | "story" }): Promise<{ id: string; permalink?: string }> {
+export async function publicar(p: { imagen: string; caption: string; que: "post" | "story"; etiquetas?: string[] }): Promise<{ id: string; permalink?: string }> {
   const contenedor = await preparar(p);
   let id: string;
   try { id = (await graph<{ id: string }>(`${META.instagram}/media_publish`, "POST", { creation_id: contenedor })).id; }
@@ -186,7 +196,7 @@ export type Ids = { campaign_id: string; adset_id: string; ad_id: string };
  * Crea la promoción completa en PAUSA (campaña, conjunto con presupuesto TOTAL y fechas, anuncio con el post).
  * Con presupuesto total, Meta nunca gasta más que `total` colones. Si algo falla, borra lo que alcanzó a crear.
  */
-export async function crearEnPausa(p: { nombre: string; mediaId: string; inicio: Date; fin: Date; total: number; publico?: Publico | null; que?: "post" | "story" }): Promise<Ids> {
+export async function crearEnPausa(p: { nombre: string; mediaId: string; inicio: Date; fin: Date; total: number; publico?: Publico | null; que?: "post" | "story"; musica?: boolean }): Promise<Ids & { musica: boolean }> {
   const act = `act_${META.cuenta}`;
   let campana = "";
   try {
@@ -201,18 +211,38 @@ export async function crearEnPausa(p: { nombre: string; mediaId: string; inicio:
       billing_event: "IMPRESSIONS", optimization_goal: "CONVERSATIONS", destination_type: "INSTAGRAM_DIRECT",
       bid_strategy: "LOWEST_COST_WITHOUT_CAP", promoted_object: { page_id: META.pagina }, targeting: segmentacion(p.publico ?? null, p.que ?? "post"),
     })).id;
-    const creativo = (await graph<{ id: string }>(`${act}/adcreatives`, "POST", {
+    const base = {
       name: p.nombre, object_id: META.pagina, instagram_user_id: META.instagram, source_instagram_media_id: p.mediaId,
       call_to_action: { type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT", link: "https://www.instagram.com" } },
-    })).id;
+    };
+    // Música: Meta escoge una canción que calce con el anuncio. Si para ese post no la acepta, sale sin música.
+    let musica = !!p.musica, creativo = "";
+    if (musica) {
+      try { creativo = (await graph<{ id: string }>(`${act}/adcreatives`, "POST", { ...base, asset_feed_spec: { audios: [{ type: "random" }] } })).id; }
+      catch (e) { console.error("[promo] sin música:", (e as Error).message); musica = false; }
+    }
+    if (!creativo) creativo = (await graph<{ id: string }>(`${act}/adcreatives`, "POST", base)).id;
     const anuncio = (await graph<{ id: string }>(`${act}/ads`, "POST", {
       name: p.nombre, adset_id: conjunto, status: "PAUSED", creative: { creative_id: creativo },
     })).id;
-    return { campaign_id: campana, adset_id: conjunto, ad_id: anuncio };
+    return { campaign_id: campana, adset_id: conjunto, ad_id: anuncio, musica };
   } catch (e) {
     if (campana) await graph(campana, "DELETE").catch(() => {});
     throw e;
   }
+}
+
+/** Lo mínimo por día que Meta acepta en esta cuenta (en colones). */
+let minimoGuardado: { valor: number | null; cuando: number } | null = null;
+export async function minimoDiario(): Promise<number | null> {
+  if (minimoGuardado && Date.now() - minimoGuardado.cuando < 6 * 3600e3) return minimoGuardado.valor;
+  try {
+    const j = await graph<{ data: { currency?: string; min_daily_budget_imp?: number; min_daily_budget_high_freq?: number }[] }>(`act_${META.cuenta}/minimum_budgets`, "GET");
+    const m = j.data?.[0];
+    const v = Math.max(m?.min_daily_budget_imp ?? 0, m?.min_daily_budget_high_freq ?? 0) || null;
+    minimoGuardado = { valor: v, cuando: Date.now() };
+    return v;
+  } catch { return null; }
 }
 
 /** Enciende la promoción (solo después de la confirmación de Andrea). */
@@ -238,8 +268,9 @@ export async function resultados(campana: string) {
  * Revisión técnica sin gastar: pide la estimación de alcance y arma una promoción de prueba EN PAUSA
  * (nunca se enciende) que se borra enseguida. Sirve para confirmar que la llave y los datos funcionan.
  */
-export async function diagnostico() {
+export async function diagnostico(op: { musica?: boolean; que?: "post" | "story" } = {}) {
   const out: Record<string, unknown> = {};
+  out.minimo = await minimoDiario();
   try {
     const j = await graph<{ data: { daily_outcomes_curve?: { spend: number; reach: number }[]; estimate_dau?: number }[] }>(
       `act_${META.cuenta}/delivery_estimate`, "GET",
@@ -251,10 +282,11 @@ export async function diagnostico() {
     out.estimacion = { error: e instanceof Error ? e.message : String(e) };
   }
   try {
-    const post = (await postsRecientes())[0];
+    const post = op.que === "story" ? (await historias())[0] : (await postsRecientes())[0];
+    if (!post) throw new Error(op.que === "story" ? "No hay historias en vivo" : "No hay posts");
     const manana = new Date(Date.now() + 24 * 3600e3);
-    const ids = await crearEnPausa({ nombre: "Prueba del panel (se borra sola)", mediaId: post.id, inicio: manana, fin: new Date(manana.getTime() + 24 * 3600e3), total: 5000 });
-    out.prueba = "se pudo crear en pausa";
+    const ids = await crearEnPausa({ nombre: "Prueba del panel (se borra sola)", mediaId: post.id, inicio: manana, fin: new Date(manana.getTime() + 3 * 24 * 3600e3), total: 9000, que: op.que, musica: op.musica });
+    out.prueba = "se pudo crear en pausa"; out.musica = ids.musica;
     try { await graph(ids.campaign_id, "DELETE"); out.borrada = true; } catch (e) { out.borrada = e instanceof Error ? e.message : String(e); }
   } catch (e) {
     out.prueba = { error: e instanceof Error ? e.message : String(e) };

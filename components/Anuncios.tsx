@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Datos, Feria, Pieza } from "@/lib/asistente";
 import {
-  apiAnuncios, arranques, calendario, conIva, DIAS, MONTOS, nidPromo, plata, primeraLinea, RECOMENDADO, TOPES,
+  apiAnuncios, arranques, calendario, conIva, DIAS, fechaCorta, hoyCR, MONTOS, nidPromo, plata, primeraLinea, RECOMENDADO, sumar, TOPES,
   type Arranque, type InfoAnuncios, type Post, type Promo,
 } from "@/lib/promo";
 import Icon from "./Icon";
@@ -55,8 +55,8 @@ type Paso = "tope" | "post" | "cuando" | "dias" | "monto" | "publico" | "revisar
 const ORDEN: Paso[] = ["post", "cuando", "dias", "monto", "publico", "revisar"];
 
 /** Promocionar un post o una historia, un paso a la vez, con botón de continuar en cada paso. */
-export function Promocionar({ ferias, que: queInicial = "post", avisar, listo, cancelar }: {
-  ferias: Feria[]; que?: "post" | "story"; avisar: Avisar; listo: (texto: string) => void; cancelar: () => void;
+export function Promocionar({ ferias, que: queInicial = "post", avisar, listo, cancelar, dias: diasInicial, porDia: porDiaInicial, musica: musicaInicial }: {
+  ferias: Feria[]; que?: "post" | "story"; avisar: Avisar; listo: (texto: string) => void; cancelar: () => void; dias?: number; porDia?: number; musica?: boolean;
 }) {
   const [info, setInfo] = useState<InfoAnuncios | null>(null);
   const [que, setQue] = useState<"post" | "story">(queInicial);
@@ -64,8 +64,11 @@ export function Promocionar({ ferias, que: queInicial = "post", avisar, listo, c
   const [post, setPost] = useState<Post | null>(null);
   const ops = useMemo(() => arranques(ferias), [ferias]);
   const [desde, setDesde] = useState<Arranque | null>(null);
-  const [dias, setDias] = useState<number | null>(null);
-  const [porDia, setPorDia] = useState<number | null>(RECOMENDADO);
+  const [dias, setDias] = useState<number | null>(diasInicial ?? null);
+  const [porDia, setPorDia] = useState<number | null>(porDiaInicial ?? RECOMENDADO);
+  const [otroMonto, setOtroMonto] = useState(porDiaInicial && !MONTOS.includes(porDiaInicial) ? String(porDiaInicial).replace(/\B(?=(\d{3})+(?!\d))/g, " ") : "");
+  const [otrosDias, setOtrosDias] = useState(!!diasInicial && !DIAS.includes(diasInicial));
+  const [musica, setMusica] = useState(musicaInicial ?? true);
   const [publico, setPublico] = useState<Publico | null | undefined>(undefined);
   const [pensando, setPensando] = useState(false);
   const [paso, setPaso] = useState<Paso>("post");
@@ -93,25 +96,24 @@ export function Promocionar({ ferias, que: queInicial = "post", avisar, listo, c
   if (!info) return <div className="pr-cargando"><span className="pn-girando" />Un momento…</div>;
   if (!info.conectado) return <p className="pn-nota">Instagram todavía no está conectado con el panel.</p>;
 
-  const cal = desde && dias ? calendario(desde, que === "story" ? 1 : dias) : null;
+  const minimo = info.minimo ?? 500;
+  const cal = desde && dias ? calendario(desde, dias) : null;
   const total = cal && porDia ? porDia * cal.dias : 0;
   const cabe = conIva(total) <= (info.restante ?? 0);
+  const montoOk = !!porDia && porDia >= minimo && porDia <= 50_000;
   const i = ORDEN.indexOf(paso);
-  const puede = paso === "post" ? !!post : paso === "cuando" ? !!desde : paso === "dias" ? !!dias : paso === "monto" ? !!porDia && cabe : paso === "publico" ? !pensando : true;
-  const siguiente = () => {
-    let n = ORDEN[i + 1];
-    if (n === "dias" && que === "story") { setDias(1); n = "monto"; }
-    setPaso(n);
-  };
-  const atras = () => { let n = ORDEN[i - 1]; if (n === "dias" && que === "story") n = "cuando"; if (n) setPaso(n); else cancelar(); };
+  const puede = paso === "post" ? !!post : paso === "cuando" ? !!desde : paso === "dias" ? !!dias : paso === "monto" ? montoOk && cabe : paso === "publico" ? !pensando : true;
+  const siguiente = () => setPaso(ORDEN[i + 1]);
+  const atras = () => { const n = ORDEN[i - 1]; if (n) setPaso(n); else cancelar(); };
 
   async function lanzar() {
     if (!post || !cal || !porDia) return;
     setEnviando(true);
     try {
-      await apiAnuncios({ accion: "promocionar", confirmo: true, id, mediaId: post.id, porDia, dias: cal.dias, inicio: cal.inicio, que, publico: publico ?? null });
+      const r = await apiAnuncios<{ musica?: boolean }>({ accion: "promocionar", confirmo: true, id, mediaId: post.id, porDia, dias: cal.dias, inicio: cal.inicio, que, publico: publico ?? null, musica });
       setAutorizar(false);
-      listo(`¡Listo! La promoción ${cal.inicio === new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10) ? "empieza en unos minutos" : "quedó programada"}. En Anuncios vas a ver a cuánta gente le llega y cuántas te escriben.`);
+      const sinMusica = musica && r.musica === false ? " Instagram no dejó ponerle música a ese post, así que salió sin música." : musica ? " Lleva música que escoge Meta." : "";
+      listo(`¡Listo! La promoción ${cal.inicio === new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10) ? "empieza en unos minutos" : "quedó programada"}.${sinMusica} En Anuncios vas a ver a cuánta gente le llega y cuántas te escriben.`);
     } catch (e) {
       setAutorizar(false); avisar((e as Error).message, true);
     } finally { setEnviando(false); }
@@ -153,15 +155,34 @@ export function Promocionar({ ferias, que: queInicial = "post", avisar, listo, c
             <button key={o.clave} className={desde?.clave === o.clave ? "is-on" : ""} onClick={() => setDesde(o)}>
               <Icon n={o.feria ? "carpa" : "reloj"} s={22} /><span>{o.etiqueta}{o.feria && <small>Termina el día de la feria</small>}</span>{desde?.clave === o.clave && <Icon n="check" s={22} />}
             </button>
-          ))}</div>
+          ))}
+            <label className={"pr-fecha" + (desde?.clave === "fecha" ? " is-on" : "")}>
+              <Icon n="reloj" s={22} /><span>Otra fecha</span>
+              <input type="date" min={hoyCR()} max={sumar(hoyCR(), 60)} value={desde?.fecha ?? ""}
+                onChange={(e) => { const f = e.target.value; if (f) setDesde({ clave: "fecha", etiqueta: `Desde el ${fechaCorta(f)}`, fecha: f }); }} />
+            </label>
+          </div>
         </>
       )}
 
       {paso === "dias" && (
         <>
           <h3 className="pr-pregunta">¿Por cuántos días?</h3>
-          <p className="pn-nota">Para una feria, con 5 a 7 días antes alcanza.</p>
-          <div className="pn-chips is-grandes">{DIAS.map((n) => <button key={n} className={dias === n ? "is-on" : ""} onClick={() => setDias(n)}>{n} {n === 1 ? "día" : "días"}</button>)}</div>
+          <p className="pn-nota">{que === "story" ? "La historia dura 24 horas en tu perfil, pero como anuncio Meta la puede seguir mostrando los días que escojás." : "Para una feria, con 5 a 7 días antes alcanza."}</p>
+          <div className="pn-chips is-grandes">
+            {DIAS.map((n) => <button key={n} className={dias === n && !otrosDias ? "is-on" : ""} onClick={() => { setDias(n); setOtrosDias(false); }}>{n} {n === 1 ? "día" : "días"}</button>)}
+            <button className={otrosDias ? "is-on" : ""} onClick={() => { setOtrosDias(true); if (!dias) setDias(4); }}>Otro</button>
+          </div>
+          {otrosDias && (
+            <div className="pr-otro">
+              <span>Días:</span>
+              <div className="pn-paso">
+                <button type="button" aria-label="Un día menos" disabled={(dias ?? 1) <= 1} onClick={() => setDias(Math.max(1, (dias ?? 1) - 1))}><Icon n="menos" s={20} /></button>
+                <b>{dias ?? 1}</b>
+                <button type="button" aria-label="Un día más" disabled={(dias ?? 1) >= 30} onClick={() => setDias(Math.min(30, (dias ?? 1) + 1))}><Icon n="mas" s={20} /></button>
+              </div>
+            </div>
+          )}
           {cal && <p className="pr-dato"><Icon n="reloj" s={20} /><span>{cal.texto}</span></p>}
         </>
       )}
@@ -169,8 +190,16 @@ export function Promocionar({ ferias, que: queInicial = "post", avisar, listo, c
       {paso === "monto" && (
         <>
           <h3 className="pr-pregunta">¿Cuánto por día?</h3>
-          <p className="pn-nota">Te recomiendo {plata(RECOMENDADO)}: alcanza para llegarle a bastante gente sin gastar mucho.</p>
-          <div className="pn-chips is-grandes">{MONTOS.map((m) => <button key={m} className={porDia === m ? "is-on" : ""} onClick={() => setPorDia(m)}>{plata(m)}{m === RECOMENDADO ? " · recomendado" : ""}</button>)}</div>
+          <p className="pn-nota">Te recomiendo {plata(RECOMENDADO)}: alcanza para llegarle a bastante gente sin gastar mucho. Lo mínimo que acepta Meta es {plata(minimo)} por día.</p>
+          <div className="pn-chips is-grandes">
+            {MONTOS.filter((m) => m >= minimo).map((m) => <button key={m} className={porDia === m && !otroMonto ? "is-on" : ""} onClick={() => { setPorDia(m); setOtroMonto(""); }}>{plata(m)}{m === RECOMENDADO ? " · recomendado" : ""}</button>)}
+          </div>
+          <label className="pn-campo pr-otro-monto"><span>Otro monto por día</span>
+            <div className="pn-con-prefijo"><span>₡</span><input inputMode="numeric" value={otroMonto} placeholder="Ej.: 1 200"
+              onChange={(e) => { const v = e.target.value.replace(/[^\d]/g, ""); setOtroMonto(v.replace(/\B(?=(\d{3})+(?!\d))/g, " ")); setPorDia(v ? Number(v) : null); }} /></div>
+          </label>
+          {!!porDia && porDia < minimo && <p className="pn-alerta">Meta no acepta menos de {plata(minimo)} por día.</p>}
+          {!!porDia && porDia > 50_000 && <p className="pn-alerta">Eso es mucho por día; el máximo aquí es {plata(50_000)}.</p>}
           {cal && porDia && <p className="pr-dato"><Icon n="moneda" s={20} /><span>Máximo a cobrar: <b>{plata(conIva(total))}</b> con IVA, por {cal.dias} {cal.dias === 1 ? "día" : "días"}.</span></p>}
           {!cabe && <p className="pn-alerta">Eso pasa tu tope del mes: te quedan {plata(info.restante ?? 0)}. Escogé menos días o menos por día.</p>}
         </>
@@ -212,10 +241,16 @@ export function Promocionar({ ferias, que: queInicial = "post", avisar, listo, c
           <dl className="pn-filas">
             <div><dt>Cuándo</dt><dd>{cal.texto}</dd></div>
             <div><dt>Por día</dt><dd>{plata(porDia)}</dd></div>
+            <div><dt>Música</dt><dd>{musica ? "Sí" : "No"}</dd></div>
             <div><dt>Para quién</dt><dd>{publico ? `Mujeres de ${publico.edad_min} a ${publico.edad_max}` : "Mujeres en Costa Rica"}</dd></div>
             <div className="is-fuerte"><dt>Máximo a cobrar</dt><dd>{plata(conIva(total))}</dd></div>
           </dl>
           <p className="pn-nota">Incluye el 13 % de IVA que cobra el banco. Meta nunca cobra más que eso.</p>
+          <button type="button" className="pn-fila ti-ficha-conia" role="switch" aria-checked={musica} onClick={() => setMusica(!musica)}>
+            <span className="pn-fila-ico"><Icon n="altavoz" s={22} /></span>
+            <span className="pn-fila-txt"><b>Ponerle música</b><small>Meta le pone una canción que calce con tu {que === "story" ? "historia" : "post"}. Si en algún lugar no se puede, sale sin música.</small></span>
+            <span className={"pn-switch" + (musica ? " is-on" : "")} aria-hidden><i /></span>
+          </button>
         </>
       )}
 
@@ -260,8 +295,8 @@ async function aJpeg(archivo: Blob, que: "post" | "story"): Promise<{ blob: Blob
 }
 
 /** Subir un post o una historia nueva a Instagram: foto, texto (con ayuda de la IA), vista previa y confirmación. */
-export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, listo, cancelar, inicial }: {
-  piezas: Pieza[]; que?: "post" | "story"; idea?: string; avisar: Avisar; listo: (texto: string) => void; cancelar: () => void;
+export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, listo, cancelar, inicial, etiquetas: etiquetasIniciales }: {
+  piezas: Pieza[]; que?: "post" | "story"; idea?: string; avisar: Avisar; listo: (texto: string) => void; cancelar: () => void; etiquetas?: string[];
   /** Un diseño ya hecho (desde el diseñador): se publica tal cual, con su texto. */
   inicial?: { blob: Blob; url: string; caption?: string };
 }) {
@@ -274,6 +309,14 @@ export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, 
   const [enviando, setEnviando] = useState(false);
   const [id] = useState(nidPromo);
   const conFoto = piezas.filter((p) => p.foto);
+  // Personas etiquetadas (usuarios de Instagram) y las que ya etiquetó antes, para tocarlas rápido.
+  const [etiquetas, setEtiquetas] = useState<string[]>(etiquetasIniciales ?? []);
+  const [nueva, setNueva] = useState("");
+  const [antes, setAntes] = useState<string[]>([]);
+  useEffect(() => { apiAnuncios().then((i) => setAntes(i.etiquetas ?? [])).catch(() => {}); }, []);
+  const limpiar = (u: string) => u.trim().replace(/^@/, "").toLowerCase();
+  const valida = (u: string) => /^[a-z0-9._]{1,30}$/.test(u);
+  const agregar = (u: string) => { const x = limpiar(u); if (valida(x) && !etiquetas.includes(x)) setEtiquetas([...etiquetas, x].slice(0, 20)); setNueva(""); };
 
   async function usar(b: Blob, pieza?: Pieza) {
     try { setFoto({ ...(await aJpeg(b, que)), pieza }); } catch (e) { avisar((e as Error).message, true); }
@@ -291,6 +334,7 @@ export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, 
     try {
       const f = new FormData();
       f.set("id", id); f.set("que", que); f.set("caption", caption); f.set("confirmo", "si"); f.set("foto", foto.blob, "foto.jpg");
+      f.set("etiquetas", etiquetas.join(","));
       const r = await fetch("/api/anuncios/publicar", { method: "POST", body: f });
       if (r.status === 401) { location.href = "/admin/entrar"; return; }
       const j = await r.json().catch(() => ({}));
@@ -341,6 +385,19 @@ export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, 
               <textarea rows={5} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Escribí el texto o pedíselo a la IA" />
             </label>
           )}
+          <div className="pr-etiquetas">
+            <p className="pn-etq">Etiquetar personas (opcional)</p>
+            {etiquetas.length > 0 && <div className="pn-chips">{etiquetas.map((u) => <button key={u} className="is-on" onClick={() => setEtiquetas(etiquetas.filter((x) => x !== u))} aria-label={`Quitar a @${u}`}>@{u} <Icon n="cerrar" s={16} /></button>)}</div>}
+            <form className="pr-etiqueta-nueva" onSubmit={(e) => { e.preventDefault(); agregar(nueva); }}>
+              <span>@</span>
+              <input value={nueva} onChange={(e) => setNueva(e.target.value.replace(/\s/g, ""))} placeholder="usuario de Instagram" autoCapitalize="none" autoCorrect="off" maxLength={31} aria-label="Usuario de Instagram para etiquetar" />
+              <button className="pn-btn is-chico" disabled={!valida(limpiar(nueva))}>Agregar</button>
+            </form>
+            {antes.filter((u) => !etiquetas.includes(u)).length > 0 && (
+              <div className="pn-chips">{antes.filter((u) => !etiquetas.includes(u)).slice(0, 8).map((u) => <button key={u} onClick={() => agregar(u)}>+ @{u}</button>)}</div>
+            )}
+            <p className="pn-nota">{que === "story" ? "Les llega la mención y pueden compartir tu historia." : "Aparecen al tocar la foto y les llega aviso."} La cuenta tiene que ser pública.</p>
+          </div>
           <div className="pn-botones is-columna">
             {que === "post" && <button className="pn-btn is-tinte" disabled={escribiendo} onClick={escribir}><Icon n="chispa" s={22} />{escribiendo ? "Escribiendo…" : caption ? "Escribir otro con IA" : "Escribir el texto con IA"}</button>}
             <button className="pn-btn is-grande" disabled={que === "post" && !caption.trim()} onClick={() => setConfirmar(true)}><Icon n="insta" s={24} />Publicar en Instagram</button>

@@ -779,3 +779,13 @@ html.arrastrando body::after {
   padding: 12px 20px; border-radius: 999px; background: var(--bosque); color: #fff; font: 600 16px/1.2 var(--ui); pointer-events: none;
   box-shadow: 0 10px 30px rgba(27, 31, 29, 0.25);
 }
+.pr-otro { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--fondo); font-weight: 600; }
+.pr-otro-monto .pn-con-prefijo input { font-size: 20px; }
+.pr-fecha { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; background: var(--fondo); font-weight: 600; box-shadow: inset 0 0 0 1.5px transparent; }
+.pr-fecha.is-on { background: #fff; box-shadow: inset 0 0 0 2px var(--bosque); }
+.pr-fecha span { flex: 1; }
+.pr-fecha input { height: 44px; border: 0; border-radius: 10px; padding: 0 10px; background: #fff; font: inherit; font-size: 16px; }
+.pr-etiquetas { display: grid; gap: 10px; padding: 14px; border-radius: 16px; background: var(--fondo); }
+.pr-etiqueta-nueva { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 14px; border-radius: 14px; background: #fff; }
+.pr-etiqueta-nueva > span { font-weight: 700; color: var(--tinta-3); }
+.pr-etiqueta-nueva input { flex: 1; min-width: 0; height: 46px; border: 0; background: none; font: inherit; font-size: 17px; outline: none; }

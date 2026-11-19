@@ -285,10 +285,10 @@ function TarjetaVista(p: VistaProps) {
     case "confirmar": return <Confirmar acciones={t.acciones} aprendo={t.aprendo} d={p.d} guardar={p.guardar} cerrar={p.cerrar} />;
     case "categoria": return <Categoria mov={t.mov} clave={t.clave} d={p.d} guardar={p.guardar} cerrar={p.cerrar} />;
     case "posts": return p.enLinea
-      ? <div className="ch-tarjeta"><Promocionar ferias={p.d.ferias} que={t.que} avisar={p.avisar} listo={(x) => p.cerrar("Se promocionó.", x)} cancelar={() => p.cerrar("Andrea canceló la promoción.", "Listo, no promocioné nada.")} /></div>
+      ? <div className="ch-tarjeta"><Promocionar ferias={p.d.ferias} que={t.que} dias={t.dias} porDia={t.porDia} musica={t.musica} avisar={p.avisar} listo={(x) => p.cerrar("Se promocionó.", x)} cancelar={() => p.cerrar("Andrea canceló la promoción.", "Listo, no promocioné nada.")} /></div>
       : <p className="ch-tarjeta pn-nota">Las promociones se hacen cuando el panel está conectado.</p>;
     case "publicar": return p.enLinea
-      ? <div className="ch-tarjeta"><Publicar piezas={p.piezas} que={t.que} idea={t.caption} avisar={p.avisar} listo={(x) => p.cerrar("Se publicó en Instagram.", x)} cancelar={() => p.cerrar("Andrea canceló la publicación.", "Listo, no publiqué nada.")} /></div>
+      ? <div className="ch-tarjeta"><Publicar piezas={p.piezas} que={t.que} idea={t.caption} etiquetas={t.etiquetas} avisar={p.avisar} listo={(x) => p.cerrar("Se publicó en Instagram.", x)} cancelar={() => p.cerrar("Andrea canceló la publicación.", "Listo, no publiqué nada.")} /></div>
       : <p className="ch-tarjeta pn-nota">Para publicar, el panel tiene que estar conectado.</p>;
     case "producto": return <div className="ch-tarjeta"><FichaProducto inicial={t.borrador} piezas={p.piezas} colecciones={p.colecciones} tipos={p.tipos} guardar={p.guardar} subir={p.subirFotos} avisar={p.avisar} refrescar={p.refrescar} listo={(x) => p.cerrar("Se guardó el producto.", x)} cancelar={() => p.cerrar("Andrea canceló el producto.", "Listo, no guardé nada.")} /></div>;
     case "feria": return <div className="ch-tarjeta"><FichaFeria inicial={t.borrador} guardar={p.guardar} listo={(f) => p.cerrar(`Se anotó la feria ${f.nombre}.`, `¡Listo! ${f.nombre} ya está anotada. ¿La promocionamos unos días antes?`)} cancelar={() => p.cerrar("Andrea canceló la feria.", "Listo, no anoté nada.")} /></div>;

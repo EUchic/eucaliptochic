@@ -17,8 +17,8 @@ export type BorradorFeria = { nombre?: string; fecha?: string; lugar?: string };
 export type Tarjeta =
   | { tipo: "confirmar"; acciones: Accion[]; aprendo?: string }
   | { tipo: "categoria"; mov: Movimiento; clave?: string }
-  | { tipo: "posts"; que?: "post" | "story" }
-  | { tipo: "publicar"; caption?: string; que?: "post" | "story" }
+  | { tipo: "posts"; que?: "post" | "story"; dias?: number; porDia?: number; musica?: boolean }
+  | { tipo: "publicar"; caption?: string; que?: "post" | "story"; etiquetas?: string[] }
   | { tipo: "foto"; slug?: string }
   | { tipo: "rehacer"; slug: string; texto?: string }
   | { tipo: "disenar"; pre: PreDiseno }

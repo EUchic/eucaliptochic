@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ajustes, ErrorBase, guardarAccion, promos, type Promo } from "@/lib/db";
-import { accesos, alcanceEstimado, buscarIntereses, crearEnPausa, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, probarPublicar, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
+import { accesos, alcanceEstimado, buscarIntereses, crearEnPausa, minimoDiario, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, probarPublicar, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
 import { URL_BASE } from "@/lib/db";
 import { hayIA, jsonIA } from "@/lib/ia";
 import { no, permitido } from "@/lib/panel";
@@ -61,7 +61,9 @@ async function estado() {
     return { ...p, alcance, mensajes };
   }));
   const usado = comprometido(vista);
-  return { conectado: true, tope, usado, restante: tope === null ? null : Math.max(0, tope - usado), publico: PUBLICO_TEXTO, promos: vista };
+  const minimo = Math.max(500, (await minimoDiario()) ?? 500);
+  const etiquetas = ((await ajustes.leer<string[]>("panel_etiquetas")) ?? []).slice(0, 20);
+  return { conectado: true, tope, usado, restante: tope === null ? null : Math.max(0, tope - usado), publico: PUBLICO_TEXTO, promos: vista, minimo, etiquetas };
 }
 
 export async function GET(req: Request) {
@@ -95,7 +97,7 @@ export async function POST(req: Request) {
 
     if (b.accion === "diagnostico") {
       // Nunca enciende nada: solo pregunta a Meta y arma/borra una prueba en pausa.
-      return NextResponse.json(await diagnostico());
+      return NextResponse.json(await diagnostico({ musica: b.musica === true, que: b.que === "story" ? "story" : "post" }));
     }
 
     if (b.accion === "permisos") return NextResponse.json({ permisos: await permisos(), accesos: await accesos().catch((e) => ({ error: (e as Error).message })) });
@@ -160,8 +162,9 @@ export async function POST(req: Request) {
       const inicio = String(b.inicio ?? "");
       const hoy = hoyCR();
       if (!UUID.test(id)) return no("No entendí.", 400);
-      if (!(porDia >= 1000 && porDia <= 20_000)) return no("El monto por día tiene que estar entre ₡1 000 y ₡20 000.", 400);
-      if (!(dias >= 1 && dias <= 14)) return no("La promoción puede durar de 1 a 14 días.", 400);
+      const minimo = Math.max(500, (await minimoDiario()) ?? 500);
+      if (!(porDia >= minimo && porDia <= 50_000)) return no(`El monto por día tiene que estar entre ₡${minimo.toLocaleString("es-CR")} y ₡50 000.`, 400);
+      if (!(dias >= 1 && dias <= 30)) return no("La promoción puede durar de 1 a 30 días.", 400);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || inicio < hoy || inicio > sumarDias(hoy, 60)) return no("La fecha de inicio no se ve bien.", 400);
 
       const ya = await promos.uno(id);
@@ -189,9 +192,11 @@ export async function POST(req: Request) {
       if (!fila) return NextResponse.json({ ok: true, repetida: true, ...(await estado()) });
 
       const nombre = `Panel · ${post.caption.split("\n")[0].slice(0, 40) || "Post"} · ${inicio}`;
+      let conMusica = false;
       try {
-        const ids = await crearEnPausa({ nombre, mediaId: post.id, inicio: empieza, fin: termina, total, publico, que });
+        const { musica, ...ids } = await crearEnPausa({ nombre, mediaId: post.id, inicio: empieza, fin: termina, total, publico, que, musica: b.musica === true });
         await promos.cambiar(id, { ...ids });
+        conMusica = musica;
         try {
           await encender(ids);
         } catch (e) {
@@ -205,7 +210,7 @@ export async function POST(req: Request) {
         await promos.cambiar(id, { estado: "error", error: msg.slice(0, 300) }).catch(() => {});
         return no(`Meta no aceptó la promoción, así que no se cobró nada. Detalle: ${msg}`, 502);
       }
-      return NextResponse.json({ ok: true, ...(await estado()) });
+      return NextResponse.json({ ok: true, musica: conMusica, ...(await estado()) });
     }
 
     return no("No entendí.", 400);
