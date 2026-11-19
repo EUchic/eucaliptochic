@@ -111,6 +111,12 @@ export async function buscarCuenta(usuario: string): Promise<Cuenta | null> {
   } catch (e) { console.error("[instagram] buscar cuenta:", (e as ErrorMeta).codigo, (e as Error).message); return null; }
 }
 
+/** Diagnóstico de solo lectura: qué responde Instagram al buscar una cuenta por usuario. */
+export async function probarBusqueda(usuario: string) {
+  try { return await graph(META.instagram, "GET", { fields: `business_discovery.username(${usuario}){username,followers_count}` }); }
+  catch (e) { return { codigo: (e as ErrorMeta).codigo, error: (e as Error).message }; }
+}
+
 /** Cuentas que ya tienen que ver con Eucalipto: quienes comentan sus posts y quienes la etiquetan (si Meta da permiso). */
 let conocidasGuardadas: { lista: string[]; cuando: number } | null = null;
 export async function cuentasConocidas(): Promise<string[]> {

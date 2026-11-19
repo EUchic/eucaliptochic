@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ajustes, ErrorBase, guardarAccion, promos, type Promo } from "@/lib/db";
-import { accesos, alcanceEstimado, borrarMedia, buscarCuenta, buscarIntereses, crearEnPausa, cuentasConocidas, minimoDiario, type Cuenta, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, probarPublicar, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
+import { accesos, alcanceEstimado, borrarMedia, buscarCuenta, buscarIntereses, crearEnPausa, cuentasConocidas, minimoDiario, type Cuenta, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, probarBusqueda, probarPublicar, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
 import { URL_BASE } from "@/lib/db";
 import { hayIA, jsonIA } from "@/lib/ia";
 import { no, permitido } from "@/lib/panel";
@@ -75,6 +75,11 @@ export async function GET(req: Request) {
     const que = new URL(req.url).searchParams.get("que");
     if (que === "posts") return NextResponse.json({ posts: await postsRecientes() });
     if (que === "historias") return NextResponse.json({ posts: await historias() });
+    if (que === "revisar_ig") {
+      // Solo lectura: qué permisos tiene la conexión y qué responde Instagram al buscar una cuenta.
+      const busqueda = await probarBusqueda("zococr");
+      return NextResponse.json({ permisos: await permisos().catch((e) => (e as Error).message), busqueda });
+    }
     if (que === "cuentas") {
       // Sugerencias para etiquetar: las que ya etiquetó, las que comentan o la etiquetan, y la cuenta exacta si existe.
       const q = (new URL(req.url).searchParams.get("q") ?? "").replace(/^@/, "").toLowerCase().trim().slice(0, 30);
