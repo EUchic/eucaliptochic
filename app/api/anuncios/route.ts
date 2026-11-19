@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ajustes, ErrorBase, guardarAccion, promos, type Promo } from "@/lib/db";
-import { alcanceEstimado, buscarIntereses, crearEnPausa, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, probarPublicar, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
+import { accesos, alcanceEstimado, buscarIntereses, crearEnPausa, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, probarPublicar, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
 import { URL_BASE } from "@/lib/db";
 import { hayIA, jsonIA } from "@/lib/ia";
 import { no, permitido } from "@/lib/panel";
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
       return NextResponse.json(await diagnostico());
     }
 
-    if (b.accion === "permisos") return NextResponse.json({ permisos: await permisos() });
+    if (b.accion === "permisos") return NextResponse.json({ permisos: await permisos(), accesos: await accesos().catch((e) => ({ error: (e as Error).message })) });
     if (b.accion === "probar_publicar") {
       // Prepara una foto de la tienda en Instagram SIN publicarla, para saber si publicar funciona.
       const imagen = String((b as { imagen?: string }).imagen ?? "");

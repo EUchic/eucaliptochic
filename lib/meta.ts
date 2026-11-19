@@ -126,6 +126,13 @@ export async function publicar(p: { imagen: string; caption: string; que: "post"
   return { id, permalink: link.permalink };
 }
 
+/** Qué puede hacer la conexión en cada página de Facebook (y su Instagram): para publicar hace falta CREATE_CONTENT. */
+export async function accesos() {
+  const j = await graph<{ data: { name: string; tasks?: string[]; instagram_business_account?: { id: string; username?: string } }[] }>(
+    "me/accounts", "GET", { fields: "name,tasks,instagram_business_account{id,username}", limit: "50" });
+  return (j.data ?? []).map((p) => ({ pagina: p.name, tareas: p.tasks ?? [], instagram: p.instagram_business_account?.username ?? null, esLaDeLaMarca: p.instagram_business_account?.id === META.instagram }));
+}
+
 /** Permisos que tiene la conexión con Meta (para saber si puede publicar). */
 export async function permisos(): Promise<string[]> {
   const j = await graph<{ data: { permission: string; status: string }[] }>("me/permissions", "GET");
