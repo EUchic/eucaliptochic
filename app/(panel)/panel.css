@@ -789,3 +789,21 @@ html.arrastrando body::after {
 .pr-etiqueta-nueva { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 14px; border-radius: 14px; background: #fff; }
 .pr-etiqueta-nueva > span { font-weight: 700; color: var(--tinta-3); }
 .pr-etiqueta-nueva input { flex: 1; min-width: 0; height: 46px; border: 0; background: none; font: inherit; font-size: 17px; outline: none; }
+/* Buscar cuentas de Instagram para etiquetar */
+.bc { position: relative; display: grid; gap: 8px; }
+.bc-lista { display: grid; gap: 2px; padding: 6px; border-radius: 14px; background: #fff; box-shadow: 0 10px 30px rgba(27, 31, 29, 0.14); max-height: 300px; overflow-y: auto; }
+.bc-lista button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 10px; border-radius: 10px; text-align: left; }
+.bc-lista button:hover, .bc-lista button:focus-visible { background: var(--fondo); }
+.bc-lista img, .bc-ini { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none; }
+.bc-ini { display: grid; place-items: center; background: var(--salvia-claro); color: var(--bosque); font-weight: 700; }
+.bc-txt { flex: 1; min-width: 0; display: grid; }
+.bc-txt b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-txt small { font-size: 13px; color: var(--tinta-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-lista button > svg { color: var(--bosque); flex: none; }
+.pr-musica { display: grid; gap: 8px; padding: 14px; border-radius: 16px; background: linear-gradient(135deg, #F6E7E2, var(--salvia-claro)); }
+.pr-musica > p:first-child { display: flex; align-items: center; gap: 8px; font-size: 17px; }
+.an-historias ul { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.an-historias li { display: grid; gap: 4px; justify-items: center; flex: none; width: 92px; }
+.an-historias img { width: 92px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 12px; background: var(--fondo); }
+.an-historias small { font-size: 13px; color: var(--tinta-2); }
+.an-historia-grande { display: block; width: 120px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 12px; margin: 0 auto 10px; }

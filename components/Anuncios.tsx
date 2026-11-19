@@ -294,6 +294,70 @@ async function aJpeg(archivo: Blob, que: "post" | "story"): Promise<{ blob: Blob
   } finally { URL.revokeObjectURL(src); }
 }
 
+type Cuenta = { username: string; nombre?: string; foto?: string; seguidores?: number; fuente: "exacta" | "conocida" };
+const miles = (n: number) => (n >= 1000 ? `${(n / 1000).toLocaleString("es-CR", { maximumFractionDigits: 1 })} mil` : String(n));
+
+/** Escribir un usuario de Instagram y ver sugerencias mientras escribe (las conocidas y la cuenta exacta si existe). */
+function BuscarCuenta({ ya, agregar }: { ya: string[]; agregar: (u: string) => void }) {
+  const [q, setQ] = useState("");
+  const [abierto, setAbierto] = useState(false);
+  const [cuentas, setCuentas] = useState<Cuenta[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  useEffect(() => {
+    if (!abierto) return;
+    const t = setTimeout(async () => {
+      setBuscando(true);
+      try {
+        const r = await fetch(`/api/anuncios?que=cuentas&q=${encodeURIComponent(q.replace(/^@/, ""))}`);
+        const j = await r.json().catch(() => ({}));
+        setCuentas((j.cuentas ?? []) as Cuenta[]);
+      } catch { setCuentas([]); } finally { setBuscando(false); }
+    }, q ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [q, abierto]);
+  const limpio = q.trim().replace(/^@/, "").toLowerCase();
+  const valida = /^[a-z0-9._]{1,30}$/.test(limpio);
+  const lista = cuentas.filter((c) => !ya.includes(c.username));
+  const elegir = (u: string) => { agregar(u); setQ(""); setAbierto(false); };
+  return (
+    <div className="bc">
+      <form className="pr-etiqueta-nueva" onSubmit={(e) => { e.preventDefault(); if (valida) elegir(limpio); }}>
+        <span>@</span>
+        <input value={q} onChange={(e) => { setQ(e.target.value.replace(/\s/g, "")); setAbierto(true); }} onFocus={() => setAbierto(true)} onBlur={() => setTimeout(() => setAbierto(false), 200)} placeholder="Escribí el usuario, ej.: duo"
+          autoCapitalize="none" autoCorrect="off" maxLength={31} aria-label="Usuario de Instagram para etiquetar" role="combobox" aria-expanded={abierto && lista.length > 0} />
+        {buscando && <span className="pn-girando is-chico" aria-hidden />}
+        <button className="pn-btn is-chico" disabled={!valida}>Agregar</button>
+      </form>
+      {abierto && lista.length > 0 && (
+        <ul className="bc-lista" role="listbox">
+          {lista.map((c) => (
+            <li key={c.username}>
+              <button type="button" role="option" aria-selected={false} onClick={() => elegir(c.username)}>
+                {c.foto ? <img src={c.foto} alt="" /> : <span className="bc-ini">{c.username[0]?.toUpperCase()}</span>}
+                <span className="bc-txt"><b>@{c.username}</b><small>{c.fuente === "exacta" ? [c.nombre, c.seguidores != null ? `${miles(c.seguidores)} seguidores` : ""].filter(Boolean).join(" · ") || "Cuenta de Instagram" : "Ya la conocés"}</small></span>
+                <Icon n="mas" s={20} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {abierto && q.length >= 2 && !buscando && !lista.some((c) => c.username === limpio) && valida && (
+        <p className="pn-nota">No encontré a @{limpio} como cuenta de negocio. Si es una cuenta personal, igual la podés agregar si el usuario está bien escrito.</p>
+      )}
+    </div>
+  );
+}
+
+/** Compartir la foto a la app de Instagram para ponerle música (Instagram no deja que otras apps pongan canciones). */
+async function abrirEnInstagram(blob: Blob, avisar: Avisar) {
+  const f = new File([blob], `eucalipto-${Date.now()}.jpg`, { type: "image/jpeg" });
+  try {
+    if (navigator.canShare?.({ files: [f] })) { await navigator.share({ files: [f] }); return; }
+  } catch (e) { if ((e as Error).name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = f.name; a.click();
+  avisar("La foto quedó en tus descargas. Abrí Instagram, creá la historia con esa foto y ponele música con el sticker de Música.");
+}
+
 /** Subir un post o una historia nueva a Instagram: foto, texto (con ayuda de la IA), vista previa y confirmación. */
 export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, listo, cancelar, inicial, etiquetas: etiquetasIniciales }: {
   piezas: Pieza[]; que?: "post" | "story"; idea?: string; avisar: Avisar; listo: (texto: string) => void; cancelar: () => void; etiquetas?: string[];
@@ -311,12 +375,7 @@ export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, 
   const conFoto = piezas.filter((p) => p.foto);
   // Personas etiquetadas (usuarios de Instagram) y las que ya etiquetó antes, para tocarlas rápido.
   const [etiquetas, setEtiquetas] = useState<string[]>(etiquetasIniciales ?? []);
-  const [nueva, setNueva] = useState("");
-  const [antes, setAntes] = useState<string[]>([]);
-  useEffect(() => { apiAnuncios().then((i) => setAntes(i.etiquetas ?? [])).catch(() => {}); }, []);
-  const limpiar = (u: string) => u.trim().replace(/^@/, "").toLowerCase();
-  const valida = (u: string) => /^[a-z0-9._]{1,30}$/.test(u);
-  const agregar = (u: string) => { const x = limpiar(u); if (valida(x) && !etiquetas.includes(x)) setEtiquetas([...etiquetas, x].slice(0, 20)); setNueva(""); };
+  const agregar = (u: string) => { const x = u.trim().replace(/^@/, "").toLowerCase(); if (/^[a-z0-9._]{1,30}$/.test(x) && !etiquetas.includes(x)) setEtiquetas([...etiquetas, x].slice(0, 20)); };
 
   async function usar(b: Blob, pieza?: Pieza) {
     try { setFoto({ ...(await aJpeg(b, que)), pieza }); } catch (e) { avisar((e as Error).message, true); }
@@ -385,17 +444,17 @@ export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, 
               <textarea rows={5} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Escribí el texto o pedíselo a la IA" />
             </label>
           )}
+          {que === "story" && (
+            <div className="pr-musica">
+              <p><Icon n="altavoz" s={20} /><b>¿Le querés poner música?</b></p>
+              <p className="pn-nota">Instagram no deja que otras apps le pongan canciones a las historias; solo se puede en la app de Instagram. Tocá el botón, escogé Instagram → Historia y ahí le ponés la canción con el sticker de Música. Si lo hacés así, no hace falta publicarla desde aquí.</p>
+              <button className="pn-btn is-tinte" onClick={() => abrirEnInstagram(foto.blob, avisar)}><Icon n="insta" s={22} />Abrir en Instagram para ponerle música</button>
+            </div>
+          )}
           <div className="pr-etiquetas">
             <p className="pn-etq">Etiquetar personas (opcional)</p>
             {etiquetas.length > 0 && <div className="pn-chips">{etiquetas.map((u) => <button key={u} className="is-on" onClick={() => setEtiquetas(etiquetas.filter((x) => x !== u))} aria-label={`Quitar a @${u}`}>@{u} <Icon n="cerrar" s={16} /></button>)}</div>}
-            <form className="pr-etiqueta-nueva" onSubmit={(e) => { e.preventDefault(); agregar(nueva); }}>
-              <span>@</span>
-              <input value={nueva} onChange={(e) => setNueva(e.target.value.replace(/\s/g, ""))} placeholder="usuario de Instagram" autoCapitalize="none" autoCorrect="off" maxLength={31} aria-label="Usuario de Instagram para etiquetar" />
-              <button className="pn-btn is-chico" disabled={!valida(limpiar(nueva))}>Agregar</button>
-            </form>
-            {antes.filter((u) => !etiquetas.includes(u)).length > 0 && (
-              <div className="pn-chips">{antes.filter((u) => !etiquetas.includes(u)).slice(0, 8).map((u) => <button key={u} onClick={() => agregar(u)}>+ @{u}</button>)}</div>
-            )}
+            <BuscarCuenta ya={etiquetas} agregar={agregar} />
             <p className="pn-nota">{que === "story" ? "Les llega la mención y pueden compartir tu historia." : "Aparecen al tocar la foto y les llega aviso."} La cuenta tiene que ser pública.</p>
           </div>
           <div className="pn-botones is-columna">
@@ -409,6 +468,44 @@ export function Publicar({ piezas, que: queInicial = "post", idea = "", avisar, 
       {confirmar && (
         <Confirmacion titulo={que === "story" ? "¿Publicar la historia?" : "¿Publicar el post?"} boton="Sí, publicar" enviando={enviando} si={publicar} no={() => setConfirmar(false)}
           texto={<p>Se va a publicar ya mismo en el Instagram de Eucalipto Chic y lo van a ver tus seguidoras.</p>} />
+      )}
+    </div>
+  );
+}
+
+/** Las historias que están en vivo, con la opción de borrarlas (con confirmación). */
+function Historias({ avisar }: { avisar: Avisar }) {
+  const [lista, setLista] = useState<Post[] | null>(null);
+  const [borrar, setBorrar] = useState<Post | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const cargar = () => apiAnuncios<{ posts: Post[] }>(undefined, "?que=historias").then((j) => setLista(j.posts)).catch(() => setLista([]));
+  useEffect(() => { cargar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!lista?.length) return null;
+  async function si() {
+    if (!borrar) return;
+    setEnviando(true);
+    try {
+      await apiAnuncios({ accion: "borrar_historia", confirmo: true, mediaId: borrar.id });
+      avisar("Listo, la historia ya no está en tu Instagram.");
+      avisarGuia("historia_borrada");
+      setBorrar(null); cargar();
+    } catch (e) { setBorrar(null); avisar((e as Error).message, true); } finally { setEnviando(false); }
+  }
+  return (
+    <div className="pn-tarjeta an-historias" data-guia="historias">
+      <p className="pn-etq">Tus historias en vivo ({lista.length})</p>
+      <ul>
+        {lista.map((h) => (
+          <li key={h.id}>
+            <a href={h.permalink} target="_blank" rel="noreferrer"><img src={h.miniatura} alt="Historia" /></a>
+            <small>{new Date(h.fecha).toLocaleTimeString("es-CR", { hour: "numeric", minute: "2-digit" })}</small>
+            <button className="co-sacar" onClick={() => setBorrar(h)}><Icon n="basura" s={16} />Borrar</button>
+          </li>
+        ))}
+      </ul>
+      {borrar && (
+        <Confirmacion titulo="¿Borrar esta historia?" boton="Sí, borrarla" enviando={enviando} si={si} no={() => setBorrar(null)}
+          texto={<><img className="an-historia-grande" src={borrar.miniatura} alt="" /><p>Se quita de tu Instagram y no se puede deshacer.</p></>} />
       )}
     </div>
   );
@@ -449,6 +546,8 @@ export default function Anuncios({ d, piezas, arrancar, alArrancar, avisar, refr
             <button className="pn-accion" data-guia="promocionar" onClick={() => setVista("promo")}><span className="pn-accion-ico"><Icon n="megafono" s={26} /></span><span><b>Promocionar</b><small>Un post o una historia</small></span><Icon n="flecha" s={20} /></button>
             <button className="pn-accion" data-guia="publicar" onClick={() => setVista("publicar")}><span className="pn-accion-ico is-insta"><Icon n="insta" s={26} /></span><span><b>Publicar en Instagram</b><small>Post o historia con texto hecho por IA</small></span><Icon n="flecha" s={20} /></button>
           </div>
+
+          {info?.conectado && <Historias avisar={avisar} />}
 
           {info?.conectado && (
             <div className="pn-tarjeta an-tope">

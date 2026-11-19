@@ -91,6 +91,44 @@ export async function historias(): Promise<Post[]> {
   })).filter((m) => m.miniatura);
 }
 
+/** Borra una historia (o post) del Instagram de la marca. Solo se llama con la confirmación de Andrea. */
+export async function borrarMedia(id: string) {
+  try { await graph(id, "DELETE"); }
+  catch (e) { console.error("[instagram] borrar:", (e as ErrorMeta).codigo, (e as Error).message); throw e; }
+}
+
+export type Cuenta = { username: string; nombre?: string; foto?: string; seguidores?: number; fuente: "exacta" | "conocida" };
+
+/** Busca una cuenta de Instagram por su usuario exacto (solo cuentas de empresa o creadoras; Instagram no deja buscar por pedazos). */
+export async function buscarCuenta(usuario: string): Promise<Cuenta | null> {
+  const u = usuario.replace(/^@/, "").toLowerCase();
+  if (!/^[a-z0-9._]{1,30}$/.test(u)) return null;
+  try {
+    const j = await graph<{ business_discovery?: { username: string; name?: string; profile_picture_url?: string; followers_count?: number } }>(
+      META.instagram, "GET", { fields: `business_discovery.username(${u}){username,name,profile_picture_url,followers_count}` });
+    const b = j.business_discovery;
+    return b ? { username: b.username, nombre: b.name, foto: b.profile_picture_url, seguidores: b.followers_count, fuente: "exacta" } : null;
+  } catch { return null; }
+}
+
+/** Cuentas que ya tienen que ver con Eucalipto: quienes comentan sus posts y quienes la etiquetan (si Meta da permiso). */
+let conocidasGuardadas: { lista: string[]; cuando: number } | null = null;
+export async function cuentasConocidas(): Promise<string[]> {
+  if (conocidasGuardadas && Date.now() - conocidasGuardadas.cuando < 30 * 60e3) return conocidasGuardadas.lista;
+  const nombres = new Set<string>();
+  try {
+    const j = await graph<{ data: { comments?: { data: { username?: string }[] } }[] }>(`${META.instagram}/media`, "GET", { fields: "comments.limit(50){username}", limit: "25" });
+    for (const m of j.data ?? []) for (const c of m.comments?.data ?? []) if (c.username) nombres.add(c.username.toLowerCase());
+  } catch {}
+  try {
+    const j = await graph<{ data: { username?: string }[] }>(`${META.instagram}/tags`, "GET", { fields: "username", limit: "50" });
+    for (const t of j.data ?? []) if (t.username) nombres.add(t.username.toLowerCase());
+  } catch {}
+  const lista = [...nombres].filter((u) => /^[a-z0-9._]{1,30}$/.test(u)).slice(0, 300);
+  conocidasGuardadas = { lista, cuando: Date.now() };
+  return lista;
+}
+
 /** Publica una foto (JPEG con URL pública) en el feed o en historias. Solo se llama con la confirmación de Andrea. */
 /** Paso 1 y 2: Instagram baja la foto y la prepara (todavía no se publica nada). */
 /** Etiquetas: en los posts van en un punto de la foto; en las historias solo el usuario. */

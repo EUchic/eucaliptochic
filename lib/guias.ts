@@ -12,7 +12,7 @@ import type { Seccion } from "./cerebro";
 
 export const TAREAS = [
   "subir_foto", "rehacer_foto", "revisar_fotos_ia", "foto_de_la_pagina", "tallas", "esconder_pieza", "quitar_foto",
-  "producto_nuevo", "ver_colecciones", "feria_nueva", "cambiar_feria", "borrar_feria", "anotar_plata", "analisis_del_mes", "promocionar", "publicar",
+  "producto_nuevo", "ver_colecciones", "feria_nueva", "cambiar_feria", "borrar_feria", "anotar_plata", "analisis_del_mes", "promocionar", "publicar", "borrar_historia",
 ] as const;
 export type Tarea = (typeof TAREAS)[number];
 export type PedidoGuia = { tarea?: Tarea; slug?: string; feria?: string };
@@ -24,7 +24,7 @@ const SECCION: Record<Tarea, Seccion> = {
   subir_foto: "tienda", rehacer_foto: "tienda", revisar_fotos_ia: "tienda", foto_de_la_pagina: "tienda", tallas: "tienda",
   esconder_pieza: "tienda", quitar_foto: "tienda", producto_nuevo: "tienda", ver_colecciones: "tienda",
   feria_nueva: "ferias", cambiar_feria: "ferias", borrar_feria: "ferias",
-  anotar_plata: "plata", analisis_del_mes: "plata", promocionar: "anuncios", publicar: "anuncios",
+  anotar_plata: "plata", analisis_del_mes: "plata", promocionar: "anuncios", publicar: "anuncios", borrar_historia: "anuncios",
 };
 export const seccionDe = (t: Tarea) => SECCION[t];
 
@@ -101,6 +101,9 @@ export function armarGuia(tarea: Tarea, c: Contexto): Guia {
       { texto: "Tocá «Promocionar».", sel: '[data-guia="promocionar"]', clic: '[data-guia="promocionar"]' },
       { texto: "Seguí los pasos: escogé el post, cuándo empieza, cuántos días y cuánto querés gastar. No se cobra nada sin que digás «Sí, autorizo».", evento: ["anuncio"] },
     ], "¡Listo! La promoción quedó creada.");
+    case "borrar_historia": return g("Borrar una historia", [
+      { texto: "En «Tus historias en vivo», tocá «Borrar» en la que querés quitar y después «Sí, borrarla».", sel: '[data-guia="historias"]', evento: ["historia_borrada"] },
+    ], "¡Listo! Esa historia ya no está en tu Instagram.");
     case "publicar": return g("Publicar en Instagram", [
       { texto: "Tocá «Publicar en Instagram».", sel: '[data-guia="publicar"]', clic: '[data-guia="publicar"]' },
       { texto: "Escogé la foto, escribí el texto (o tocá «Escribir el texto con IA») y al final tocá «Publicar».", evento: ["anuncio"] },

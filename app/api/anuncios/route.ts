@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ajustes, ErrorBase, guardarAccion, promos, type Promo } from "@/lib/db";
-import { accesos, alcanceEstimado, buscarIntereses, crearEnPausa, minimoDiario, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, probarPublicar, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
+import { accesos, alcanceEstimado, borrarMedia, buscarCuenta, buscarIntereses, crearEnPausa, cuentasConocidas, minimoDiario, type Cuenta, diagnostico, detener, encender, ErrorMeta, hayMeta, historias, permisos, postsRecientes, probarPublicar, PUBLICO_TEXTO, resultados, type Publico } from "@/lib/meta";
 import { URL_BASE } from "@/lib/db";
 import { hayIA, jsonIA } from "@/lib/ia";
 import { no, permitido } from "@/lib/panel";
@@ -75,6 +75,16 @@ export async function GET(req: Request) {
     const que = new URL(req.url).searchParams.get("que");
     if (que === "posts") return NextResponse.json({ posts: await postsRecientes() });
     if (que === "historias") return NextResponse.json({ posts: await historias() });
+    if (que === "cuentas") {
+      // Sugerencias para etiquetar: las que ya etiquetó, las que comentan o la etiquetan, y la cuenta exacta si existe.
+      const q = (new URL(req.url).searchParams.get("q") ?? "").replace(/^@/, "").toLowerCase().trim().slice(0, 30);
+      const antes = (await ajustes.leer<string[]>("panel_etiquetas")) ?? [];
+      const pool = [...new Set([...antes, ...(await cuentasConocidas())])];
+      const parecidas: Cuenta[] = pool.filter((u) => !q || u.includes(q)).slice(0, 8).map((username) => ({ username, fuente: "conocida" }));
+      const exacta = q.length >= 2 ? await buscarCuenta(q) : null;
+      const cuentas = exacta ? [exacta, ...parecidas.filter((c) => c.username !== exacta.username)] : parecidas;
+      return NextResponse.json({ cuentas });
+    }
     return NextResponse.json(await estado());
   } catch (e) {
     return no(e instanceof ErrorMeta || e instanceof ErrorBase ? e.message : "No pude hablar con Meta.", 502);
@@ -101,6 +111,17 @@ export async function POST(req: Request) {
       return NextResponse.json(await diagnostico({ musica: b.musica === true, que: b.que === "story" ? "story" : "post" }));
     }
 
+    if (b.accion === "borrar_historia") {
+      if (b.confirmo !== true) return no("Falta tu confirmación. No se borró nada.", 400);
+      const h = (await historias()).find((x) => x.id === String(b.mediaId ?? ""));
+      if (!h) return no("Esa historia ya no está en tu perfil.", 404);
+      try { await borrarMedia(h.id); return NextResponse.json({ ok: true }); }
+      catch (e) {
+        const m = (e as Error).message;
+        const permiso = e instanceof ErrorMeta && (e.codigo === 10 || e.codigo === 200 || /permission/i.test(m));
+        return no(permiso ? "Para borrar historias desde el panel, la conexión con Meta necesita el permiso «instagram_manage_contents». Hay que agregarlo a la app y generar el token otra vez." : `Instagram no dejó borrarla: ${m}`, 502);
+      }
+    }
     if (b.accion === "permisos") return NextResponse.json({ permisos: await permisos(), accesos: await accesos().catch((e) => ({ error: (e as Error).message })) });
     if (b.accion === "probar_publicar") {
       // Prepara una foto de la tienda en Instagram SIN publicarla, para saber si publicar funciona.
